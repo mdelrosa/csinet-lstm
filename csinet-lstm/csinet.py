@@ -21,12 +21,54 @@ encoded_dim = 512  #compress rate=1/4->dim.=512, compress rate=1/16->dim.=128, c
 
 Conv2D = tf.keras.layers.Conv2D
 
+class CosineSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+#   def __init__(self, d_model, warmup_steps=4000):
+  def __init__(self, warmup_steps=200, epochs=600, max_lr=1e-3, min_lr=1e-4):
+    super(CosineSchedule, self).__init__()
+
+    self.warmup_steps = tf.cast(warmup_steps, tf.float32)
+    self.epochs = tf.cast(epochs, tf.float32)
+    self.max_lr = tf.cast(max_lr, tf.float32)
+    self.min_lr = tf.cast(min_lr, tf.float32)
+    self.diff_lr = max_lr - min_lr
+
+  def warmup_rate(self):
+    return self.diff_lr * self.step / self.warmup_steps + self.min_lr
+
+  def cosine_rate(self):
+    return self.diff_lr * ((tf.math.cos(self.step-self.warmup_steps*np.pi / self.epochs - self.warmup_steps) + 1) / 2) + self.min_lr
+            
+  def get_config(self):
+    config = {
+#       'epochs': self.epochs,
+#       'warmup_steps': self.warmup_steps,
+#       'max_lr': self.max_lr,
+#       'min_lr': self.min_lr,
+#       'diff_lr': self.diff_lr,
+#       'rate': self.rate
+    }
+    return config
+
+
+  def __call__(self, step):
+#     print(f"type(step) -- {type(step)}")
+    self.step = step
+    rate = tf.cond(step < self.warmup_steps, self.warmup_rate, self.cosine_rate)
+    self.rate = rate
+    return rate
+#     if step < tf.cast(self.warmup_steps, step.dtype):
+#         # linear warmup
+#         return tf.cast(self.diff_lr * step / self.warmup_steps + self.min_lr)
+#     else:
+#         # cosine annealing
+#         return tf.cast(self.diff_lr * ((tf.math.cos(step-self.warmup_steps*np.pi / self.epochs - self.warmup_steps) + 1) / 2) + self.min_lr)
+
 def CsiNet(img_channels, img_height, img_width, encoded_dim, encoder_in=None, residual_num=2, aux=None, encoded_in=None, data_format="channels_last",name=None,out_activation='sigmoid'):
         
         # Bulid the autoencoder model of CsiNet
         def residual_network(x, residual_num, encoded_dim, aux):
                 def add_common_layers(y):
-                        y = BatchNormalization()(y)
+                        y = BatchNormalization(axis=1)(y)
                         y = LeakyReLU()(y)
                         return y
                 def residual_block_decoded(y):
