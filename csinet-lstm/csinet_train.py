@@ -103,6 +103,7 @@ if __name__ == "__main__":
     # opt.rates = [512, 128, 64, 32]
     print('Build and train CsiNet for opt.rate={}'.format(opt.rate))
     # reset_keras()
+    # learning_rate = CosineSchedule(max_lr=lr, min_lr=lr/10)
     optimizer = Adam(learning_rate=lr)
     if opt.aux_bool:
         aux = Input((opt.aux_size,))
@@ -185,22 +186,25 @@ if __name__ == "__main__":
                     epochs=epochs,
                     steps_per_epoch=steps_per_epoch,
                     # batch_size=batch_size,
-                    shuffle=True,
+                    # shuffle=True,
                     # validation_data=(data_val, x_val),
                     validation_data=val_gen,
                     validation_steps=val_steps,
-                    callbacks=[history, checkpoint,
-                            TensorBoard(log_dir = path)])
+                    callbacks=[history, checkpoint]
+                    )
+                            # TensorBoard(log_dir = path)])
 
-    filename = f'{model_dir}/{opt.env}/{opt.dir}/{network_name}_trainloss.csv'
-    loss_history = np.array(history.losses_train)
-    np.savetxt(filename, loss_history, delimiter=",")
+    # filename = f'{model_dir}/{opt.env}/{opt.dir}/{network_name}_trainloss.csv'
+    # loss_history = np.array(history.losses_train)
+    # np.savetxt(filename, loss_history, delimiter=",")
             
-    filename = f'{model_dir}/{opt.env}/{opt.dir}/{network_name}_valloss.csv'
-    loss_history = np.array(history.losses_val)
-    np.savetxt(filename, loss_history, delimiter=",")
+    # filename = f'{model_dir}/{opt.env}/{opt.dir}/{network_name}_valloss.csv'
+    # loss_history = np.array(history.losses_val)
+    # np.savetxt(filename, loss_history, delimiter=",")
 
     #Testing data
+    autoencoder.load_weights(f"{outfile_base}.h5")
+    autoencoder.training = False
     tStart = time.time()
     if opt.aux_bool == 1:
         x_hat = autoencoder.predict([aux_test,x_test])
