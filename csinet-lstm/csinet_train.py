@@ -1,11 +1,12 @@
 
 if __name__ == "__main__":
     import argparse
+    import pickle
     import os
     import copy
     import sys
     sys.path.append("/home/mdelrosa/git/brat")
-    from utils.NMSE_performance import calc_NMSE, get_NMSE, denorm_H3, denorm_H4, denorm_sphH4
+    from utils.NMSE_performance import calc_NMSE, get_NMSE, denorm_H3, renorm_H4, denorm_H4, denorm_sphH4
     from utils.data_tools import dataset_pipeline_col, subsample_batches, load_pow_diff
     from utils.parsing import str2bool
     from utils.timing import Timer
@@ -90,10 +91,15 @@ if __name__ == "__main__":
     epochs = 1 if opt.debug_flag else opt.epochs
     batch_num = 1 if opt.debug_flag else batch_num 
 
-    data_train, data_val, data_test = dataset_pipeline_col(opt.debug_flag, opt.aux_bool, dataset_spec, opt.aux_size, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv, merge_val_test = True)
+    data_train, data_val = dataset_pipeline_col(opt.debug_flag, opt.aux_bool, dataset_spec, opt.aux_size, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv, merge_val_test = True)
     aux_train, x_train = data_train
     aux_val, x_val = data_val
-    aux_test, x_test = data_test
+
+    # loading directly from unnormalized data; normalize data
+    x_train = renorm_H4(x_train,minmax_file)
+    x_val = renorm_H4(x_val,minmax_file)
+    print('-> post-renorm: x_train range is from {} to {}'.format(np.min(x_train),np.max(x_train)))
+    print('-> post-renorm: x_val range is from {} to {}'.format(np.min(x_val),np.max(x_val)))
 
     SHUFFLE_BUFFER_SIZE = batch_size*5
 
@@ -101,7 +107,7 @@ if __name__ == "__main__":
     val_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_val, "input_2": x_val}, x_val)).batch(batch_size).repeat()
 
     # opt.rates = [512, 128, 64, 32]
-    print('Build and train CsiNet for opt.rate={}'.format(opt.rate))
+    print('Build and train CsiNet for rate={}'.format(opt.rate))
     # reset_keras()
     # learning_rate = CosineSchedule(max_lr=lr, min_lr=lr/10)
     optimizer = Adam(learning_rate=lr)
@@ -115,7 +121,7 @@ if __name__ == "__main__":
     if opt.dir != None:
         outpath_base += "/" + opt.dir 
     outfile_base = f"{outpath_base}/cr{opt.rate}/{network_name}"
-    # file = 'CsiNet_'+(envir)+'_dim'+str(opt.rate)+'_{}'.format(date)
+    # file = 'CsiNet_'+(envir)+'_dim'+str(opt.opt.rate)+'_{}'.format(date)
 
     out_activation = 'tanh'
     autoencoder, encoded = CsiNet(img_channels, img_height, img_width, opt.rate, aux=aux, data_format=data_format, out_activation=out_activation) # CSINet with opt.rate dimensional latent space
@@ -125,18 +131,18 @@ if __name__ == "__main__":
         # outfile = "{}/model_{}.h5".format(model_dir,file)
         autoencoder.load_weights(f"{outfile_base}.h5")
         print ("--- Pre-loaded network performance is... ---")
-        x_hat = autoencoder.predict(data_test)
+        x_hat = autoencoder.predict(data_val)
 
         print("For Adam with lr={:1.1e} // batch_size={} // norm_range={}".format(lr,batch_size,norm_range))
         if norm_range == "norm_H3":
             x_hat_denorm = denorm_H3(x_hat,minmax_file)
-            x_test_denorm = denorm_H3(x_test,minmax_file)
+            x_val_denorm = denorm_H3(x_val,minmax_file)
         if norm_range == "norm_H4":
             x_hat_denorm = denorm_H4(x_hat,minmax_file)
-            x_test_denorm = denorm_H4(x_test,minmax_file)
+            x_val_denorm = denorm_H4(x_val,minmax_file)
         print('-> x_hat range is from {} to {}'.format(np.min(x_hat_denorm),np.max(x_hat_denorm)))
-        print('-> x_test range is from {} to {} '.format(np.min(x_test_denorm),np.max(x_test_denorm)))
-        calc_NMSE(x_hat_denorm,x_test_denorm,T=T)
+        print('-> x_val range is from {} to {} '.format(np.min(x_val_denorm),np.max(x_val_denorm)))
+        calc_NMSE(x_hat_denorm,x_val_denorm,T=T)
     else:
         model_json = autoencoder.to_json()
         # outfile = "{}/model_{}.json".format(result_dir,file)
@@ -207,24 +213,28 @@ if __name__ == "__main__":
     autoencoder.training = False
     tStart = time.time()
     if opt.aux_bool == 1:
-        x_hat = autoencoder.predict([aux_test,x_test])
+        x_hat = autoencoder.predict([aux_val,x_val])
     else:
-        x_hat = autoencoder.predict(x_test)
+        x_hat = autoencoder.predict(x_val)
     tEnd = time.time()
-    # print ("It cost %f sec" % ((tEnd - tStart)/x_test.shape[0]))
+    # print ("It cost %f sec" % ((tEnd - tStart)/x_val.shape[0]))
     print(64*'=')
     print("For CR2={} // Adam with lr={:1.1e} // batch_size={} // norm_range={}".format(opt.rate,lr,batch_size,norm_range))
     print('-> pre-denorm: x_hat range is from {} to {}'.format(np.min(x_hat),np.max(x_hat)))
-    print('-> pre-denorm: x_test range is from {} to {} '.format(np.min(x_test),np.max(x_test)))
+    print('-> pre-denorm: x_val range is from {} to {} '.format(np.min(x_val),np.max(x_val)))
     if norm_range == "norm_H3":
         x_hat_denorm = denorm_H3(x_hat,minmax_file)
-        x_test_denorm = denorm_H3(x_test,minmax_file)
+        x_val_denorm = denorm_H3(x_val,minmax_file)
     if norm_range == "norm_H4":
         x_hat_denorm = denorm_H4(x_hat,minmax_file)
-        x_test_denorm = denorm_H4(x_test,minmax_file)
+        x_val_denorm = denorm_H4(x_val,minmax_file)
     print('-> post-denorm: x_hat range is from {} to {}'.format(np.min(x_hat_denorm),np.max(x_hat_denorm)))
-    print('-> post-denorm: x_test range is from {} to {} '.format(np.min(x_test_denorm),np.max(x_test_denorm)))
+    print('-> post-denorm: x_val range is from {} to {} '.format(np.min(x_val_denorm),np.max(x_val_denorm)))
     if len(diff_spec) != 0: 
         pow_diff = load_pow_diff(diff_spec)
-    calc_NMSE(x_hat_denorm, x_test_denorm, T=1, diff_test=pow_diff)
+    results = calc_NMSE(x_hat_denorm, x_val_denorm, T=1, diff_test=pow_diff)
     print(64*'=')
+    # dump nmse results to pickle file
+    with open(f"{outfile_base}_results.pkl", "wb") as f:
+       pickle.dump(results, f) 
+       f.close()
