@@ -29,9 +29,9 @@ if __name__ == "__main__":
     elif opt.env == "indoor":
         json_config = '../config/csinet_indoor_cost2100_pow.json' 
 
-    model_dir, norm_range, minmax_file, dataset_spec, diff_spec, batch_num, lrs, batch_sizes, network_name, T, data_format = get_keys_from_json(json_config, keys=['model_dir','norm_range','minmax_file','dataset_spec', 'diff_spec', 'batch_num', 'lrs', 'batch_sizes', 'network_name', 'T', 'df'])
-    lr = lrs[0]
-    batch_size = batch_sizes[0]
+    model_dir, norm_range, minmax_file, dataset_spec, diff_spec, batch_num, lr, batch_size, network_name, T, data_format = get_keys_from_json(json_config, keys=['model_dir','norm_range','minmax_file','dataset_spec', 'diff_spec', 'batch_num', 'lr', 'batch_size', 'network_name', 'T', 'df'])
+    # lr = lrs[0]
+    # batch_size = batch_sizes[0]
 
     # encoded_dims, dates, result_dir, aux_bool, opt.rate, data_format, epochs, t1_train, t2_train, gpu_num, lstm_latent_bool, conv_lstm_bool = unpack_json(json_config)
 
@@ -41,7 +41,6 @@ if __name__ == "__main__":
 
     import tensorflow as tf
     from tensorflow.keras.optimizers import Adam
-    from tensorflow.keras.layers import Dense, BatchNormalization, Reshape, Conv2D, add, LeakyReLU
     from tensorflow.keras import Input
     from tensorflow.keras.models import Model
     from tensorflow.keras.callbacks import TensorBoard, Callback, ModelCheckpoint, EarlyStopping
@@ -91,7 +90,7 @@ if __name__ == "__main__":
     epochs = 1 if opt.debug_flag else opt.epochs
     batch_num = 1 if opt.debug_flag else batch_num 
 
-    data_train, data_val = dataset_pipeline_col(opt.debug_flag, opt.aux_bool, dataset_spec, opt.aux_size, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv, merge_val_test = True)
+    data_train, data_val = dataset_pipeline_col(opt.debug_flag, opt.aux_bool, dataset_spec, opt.aux_size, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv)
     aux_train, x_train = data_train
     aux_val, x_val = data_val
 

@@ -2,27 +2,11 @@ import tensorflow as tf
 from tensorflow.keras.layers import concatenate, Dense, BatchNormalization, Reshape, add, LeakyReLU
 from tensorflow.keras import Input
 from tensorflow.keras.models import Model
-from tensorflow.keras.callbacks import TensorBoard, Callback
-import scipy.io as sio 
 import numpy as np
-import math
-import time
-# tf.reset_default_graph()
-
-# envir = 'indoor' #'indoor' or 'outdoor'
-# image params
-img_height = 32
-img_width = 32
-img_channels = 2 
-img_total = img_height*img_width*img_channels
-# network params
-residual_num = 2
-encoded_dim = 512  #compress rate=1/4->dim.=512, compress rate=1/16->dim.=128, compress rate=1/32->dim.=64, compress rate=1/64->dim.=32
 
 Conv2D = tf.keras.layers.Conv2D
 
 class CosineSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
-#   def __init__(self, d_model, warmup_steps=4000):
   def __init__(self, warmup_steps=200, epochs=600, max_lr=1e-3, min_lr=1e-4):
     super(CosineSchedule, self).__init__()
 
@@ -51,26 +35,22 @@ class CosineSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
 
 
   def __call__(self, step):
-#     print(f"type(step) -- {type(step)}")
     self.step = step
     rate = tf.cond(step < self.warmup_steps, self.warmup_rate, self.cosine_rate)
     self.rate = rate
     return rate
-#     if step < tf.cast(self.warmup_steps, step.dtype):
-#         # linear warmup
-#         return tf.cast(self.diff_lr * step / self.warmup_steps + self.min_lr)
-#     else:
-#         # cosine annealing
-#         return tf.cast(self.diff_lr * ((tf.math.cos(step-self.warmup_steps*np.pi / self.epochs - self.warmup_steps) + 1) / 2) + self.min_lr)
 
 def CsiNet(img_channels, img_height, img_width, encoded_dim, encoder_in=None, residual_num=2, aux=None, encoded_in=None, data_format="channels_last",name=None,out_activation='sigmoid'):
         
         # Bulid the autoencoder model of CsiNet
         def residual_network(x, residual_num, encoded_dim, aux):
+                img_total = img_channels*img_height*img_width
+
                 def add_common_layers(y):
                         y = BatchNormalization(axis=1)(y)
                         y = LeakyReLU()(y)
                         return y
+
                 def residual_block_decoded(y):
                         y = Conv2D(128, kernel_size=(1, 1), padding='same',data_format='channels_first',name="deconv1")(y)
                         y = add_common_layers(y)
