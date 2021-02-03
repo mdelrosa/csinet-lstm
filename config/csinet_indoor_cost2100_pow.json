@@ -6,7 +6,7 @@
 	"diff_spec": ["../data/indoor/P_diff_Hval_down_T","../data/indoor/P_diff_Htest_down_T"],
 	"batch_num": 20,
 	"learning_rate": 0.001,
-	"batch_size": 100,
+	"batch_size": 200,
 	"network_name": "csinet",
 	"minmax_file": "../data/indoor/Data100_minmax.csv",
 	"norm_range": "norm_H4",

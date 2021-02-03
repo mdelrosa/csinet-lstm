@@ -40,49 +40,47 @@ class CosineSchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
     self.rate = rate
     return rate
 
-def CsiNet(img_channels, img_height, img_width, encoded_dim, encoder_in=None, residual_num=2, aux=None, encoded_in=None, data_format="channels_last",name=None,out_activation='tanh'):
-        
+def CsiNet(img_channels, img_height, img_width, encoded_dim, encoder_in=None, residual_num=2, aux=None, encoded_in=None, data_format="channels_last",name=None,out_activation='sigmoid'):
+        img_total = img_channels*img_height*encoded_dim 
+
         # Bulid the autoencoder model of CsiNet
         def residual_network(x, residual_num, encoded_dim, aux):
-                img_total = img_channels*img_height*img_width
-
-                def add_common_layers(y):
-                        y = BatchNormalization(axis=1)(y)
-                        y = LeakyReLU()(y)
+                def add_common_layers(y,enc_bool=False):
+                        if enc_bool:
+                                y = BatchNormalization(name='CR2_batch_normalization')(y)
+                                y = LeakyReLU(name='CR2_leaky_re_lu')(y)
+                        else:
+                                y = BatchNormalization()(y)
+                                y = LeakyReLU()(y)
                         return y
-
                 def residual_block_decoded(y):
-                        y = Conv2D(128, kernel_size=(1, 1), padding='same',data_format='channels_first',name="deconv1")(y)
+                        shortcut = y
+
+                        # according to CsiNet-LSTM paper Fig. 1, residual network has 2-filter conv2D layers before other conv2D layers
+                        y = Conv2D(2, kernel_size=(3, 3), padding='same', data_format=data_format)(y)
                         y = add_common_layers(y)
-                        y = Conv2D(64, kernel_size=(1, 1), padding='same',data_format='channels_first',name="deconv2")(y)
+
+                        y = Conv2D(8, kernel_size=(3, 3), padding='same', data_format=data_format)(y)
                         y = add_common_layers(y)
-                        y = Conv2D(32, kernel_size=(3, 3), padding='same',data_format='channels_first',name="deconv3")(y)
+                        
+                        y = Conv2D(16, kernel_size=(3, 3), padding='same', data_format=data_format)(y)
                         y = add_common_layers(y)
-                        y = Conv2D(32, kernel_size=(3, 3), padding='same',data_format='channels_first',name="deconv4")(y)
-                        y = add_common_layers(y)
-                        y = Conv2D(16, kernel_size=(3, 3), padding='same',data_format='channels_first',name="deconv5")(y)
-                        y = add_common_layers(y)
-                        y = Conv2D(16, kernel_size=(3, 3), padding='same',data_format='channels_first',name="deconv6")(y)
-                        y = add_common_layers(y)
-                        y = Conv2D(2, (3, 3), activation=out_activation, padding='same',data_format='channels_first',name="predict")(y)
+                        
+                        y = Conv2D(2, kernel_size=(3, 3), padding='same', data_format=data_format)(y)
+                        y = BatchNormalization()(y)
+
+                        y = add([shortcut, y])
+                        y = LeakyReLU()(y)
+
                         return y
                 
                 # if encoder_in:
-                x = Conv2D(8, (3, 3), padding='same', data_format=data_format, name='CR2_conv2d_1')(x)
-                x = add_common_layers(x)
-                x = Conv2D(16, (3, 3), padding='same', data_format=data_format, name='CR2_conv2d_2')(x)
-                x = add_common_layers(x)
-                x = Conv2D(2, (3, 3), padding='same', data_format=data_format, name='CR2_conv2d_3')(x)
-                x = add_common_layers(x)
+                x = Conv2D(2, (3, 3), padding='same', data_format=data_format, name='CR2_conv2d')(x)
+                x = add_common_layers(x,enc_bool=True)
                 
                 x = Reshape((img_total,), name='CR2_reshape')(x)
                 encoded = Dense(encoded_dim, activation='linear', name='CR2_dense')(x)
-                # else:
-                #       x = Conv2D(2, (3, 3), padding='same', data_format=data_format)(x)
-                #       x = add_common_layers(x)
-                        
-                #       x = Reshape((img_total,))(x)
-                #       encoded = Dense(encoded_dim, activation='linear')(x)
+
                 print("Aux check: {}".format(aux))
                 tens_type = type(x)
                 if type(aux) == tens_type:
@@ -95,7 +93,9 @@ def CsiNet(img_channels, img_height, img_width, encoded_dim, encoder_in=None, re
                 elif(data_format == "channels_last"):
                         x = Reshape((img_height, img_width, img_channels,))(x)
 
-                x = residual_block_decoded(x)
+                for i in range(residual_num):
+                        x = residual_block_decoded(x)
+                x = Conv2D(2, (3, 3), activation=out_activation, padding='same', data_format=data_format)(x)
 
                 return [x, encoded]
 
@@ -106,7 +106,6 @@ def CsiNet(img_channels, img_height, img_width, encoded_dim, encoder_in=None, re
         else:
                 print("Unexpected tensor_shape param in CsiNet input.")
                 # raise Exception
-        # image_tensor = Input((img_channels, img_height, img_width))
         [network_output, encoded] = residual_network(image_tensor, residual_num, encoded_dim, aux)
         print('network_output: {} - encoded: {} -  aux: {}'.format(network_output, encoded, aux))
         tens_type = type(image_tensor)

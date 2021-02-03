@@ -177,7 +177,8 @@ if __name__ == "__main__":
     if opt.dir != None:
         model_dir += "/" + opt.dir
 
-    cr_list = [512, 256, 128, 64, 32] if opt.rate == 0 else [opt.rate]# rates for different compression ratios
+    # cr_list = [512, 256, 128, 64, 32] if opt.rate == 0 else [opt.rate]# rates for different compression ratios
+    cr_list = [256, 128, 64, 32] if opt.rate == 0 else [opt.rate]# rates for different compression ratios
     for cr in cr_list:
 
         valid_ldr = torch.utils.data.DataLoader(valid_dataset, batch_size=batch_size)

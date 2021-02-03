@@ -16,10 +16,10 @@ if __name__ == "__main__":
     parser.add_argument("-l", "--dir", type=str, default=None, help="subdirectory for saving model, checkpoint, history")
     parser.add_argument("-e", "--env", type=str, default="indoor", help="environment (either indoor or outdoor)")
     parser.add_argument("-ep", "--epochs", type=int, default=10, help="number of epochs to train for")
-    parser.add_argument("-t", "--train_argv", type=int, default=1, help="flag for toggling training")
+    parser.add_argument("-tr", "--train_argv", type=str2bool, default=True, help="flag for toggling training")
     parser.add_argument("-g", "--n_gpu", type=int, default=1, help="index of gpu for training")
     parser.add_argument("-r", "--rate", type=int, default=512, help="number of elements in latent code (i.e., encoding rate)")
-    parser.add_argument("-lo", "--load_bool", type=str2bool, default=False, help="bool for loading weights into CsiNet-LSTM network")
+    parser.add_argument("-lo", "--load_bool", type=str2bool, default=False, help="bool for loading weights into CsiNet")
     parser.add_argument("-a", "--aux_bool", type=str2bool, default=True, help="bool for building CsiNet with auxiliary input")
     parser.add_argument("-m", "--aux_size", type=int, default=512, help="integer for auxiliary input's latent rate")
     opt = parser.parse_args()
@@ -29,7 +29,7 @@ if __name__ == "__main__":
     elif opt.env == "indoor":
         json_config = '../config/csinet_indoor_cost2100_pow.json' 
 
-    model_dir, norm_range, minmax_file, dataset_spec, diff_spec, batch_num, lr, batch_size, network_name, T, data_format = get_keys_from_json(json_config, keys=['model_dir','norm_range','minmax_file','dataset_spec', 'diff_spec', 'batch_num', 'lr', 'batch_size', 'network_name', 'T', 'df'])
+    model_dir, norm_range, minmax_file, dataset_spec, diff_spec, batch_num, lr, batch_size, network_name, T, data_format = get_keys_from_json(json_config, keys=['model_dir','norm_range','minmax_file','dataset_spec', 'diff_spec', 'batch_num', 'learning_rate', 'batch_size', 'network_name', 'T', 'df'])
     # lr = lrs[0]
     # batch_size = batch_sizes[0]
 
@@ -74,9 +74,9 @@ if __name__ == "__main__":
 
     reset_keras()
 
-    config = tf.ConfigProto()
-    config.gpu_options.per_process_gpu_memory_fraction = 1.0
-    session = tf.Session(config=config)
+    # config = tf.ConfigProto()
+    # config.gpu_options.per_process_gpu_memory_fraction = 1.0
+    # session = tf.Session(config=config)
 
     # image params
     img_height = 32
@@ -91,19 +91,22 @@ if __name__ == "__main__":
     batch_num = 1 if opt.debug_flag else batch_num 
 
     data_train, data_val = dataset_pipeline_col(opt.debug_flag, opt.aux_bool, dataset_spec, opt.aux_size, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv)
-    aux_train, x_train = data_train
-    aux_val, x_val = data_val
-
-    # loading directly from unnormalized data; normalize data
-    x_train = renorm_H4(x_train,minmax_file)
-    x_val = renorm_H4(x_val,minmax_file)
-    print('-> post-renorm: x_train range is from {} to {}'.format(np.min(x_train),np.max(x_train)))
-    print('-> post-renorm: x_val range is from {} to {}'.format(np.min(x_val),np.max(x_val)))
 
     SHUFFLE_BUFFER_SIZE = batch_size*5
 
-    train_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_train, "input_2": x_train}, x_train)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
+    # loading directly from unnormalized data; normalize data
+    aux_val, x_val = data_val
+    x_val = renorm_H4(x_val,minmax_file)
+    print(f"-> aux_val.shape: {aux_val.shape} - x_val.shape: {x_val.shape}")
+    print('-> post-renorm: x_val range is from {} to {}'.format(np.min(x_val),np.max(x_val)))
     val_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_val, "input_2": x_val}, x_val)).batch(batch_size).repeat()
+
+    if opt.train_argv:
+        aux_train, x_train = data_train
+        x_train = renorm_H4(x_train,minmax_file)
+        print(f"-> aux_train.shape: {aux_train.shape} - x_train.shape: {x_train.shape}")
+        print('-> post-renorm: x_train range is from {} to {}'.format(np.min(x_train),np.max(x_train)))
+        train_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_train, "input_2": x_train}, x_train)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
 
     # opt.rates = [512, 128, 64, 32]
     print('Build and train CsiNet for rate={}'.format(opt.rate))
@@ -167,7 +170,7 @@ if __name__ == "__main__":
     # early stopping callback
     es = EarlyStopping(monitor='val_loss',mode='min',patience=20,verbose=1)
 
-    path = f'{outfile_base}_tensorboard'
+    # path = f'{outfile_base}_tensorboard'
 
     # save+serialize model to JSON
     # model_json = autoencoder.to_json()
@@ -179,43 +182,47 @@ if __name__ == "__main__":
     # autoencoder.save_weights(outfile)
 
     outfile = f"{outfile_base}.h5"
-    checkpoint = ModelCheckpoint(outfile, monitor="val_loss",verbose=1,save_best_only=True,mode="min")
 
-    steps_per_epoch = x_train.shape[0] // batch_size
-    val_steps = x_val.shape[0] // batch_size
+    if opt.train_argv:
 
-    autoencoder.fit(
-                    train_gen,
-                    # data_train,
-                    # x_train,
-                    epochs=epochs,
-                    steps_per_epoch=steps_per_epoch,
-                    # batch_size=batch_size,
-                    # shuffle=True,
-                    # validation_data=(data_val, x_val),
-                    validation_data=val_gen,
-                    validation_steps=val_steps,
-                    callbacks=[history, checkpoint]
-                    )
-                            # TensorBoard(log_dir = path)])
+        checkpoint = ModelCheckpoint(outfile, monitor="val_loss",verbose=1,save_best_only=True,mode="min")
+        steps_per_epoch = x_train.shape[0] // batch_size
+        val_steps = x_val.shape[0] // batch_size
+        autoencoder.trainable = True
+        autoencoder.fit(
+                        train_gen,
+                        # data_train,
+                        # x_train,
+                        epochs=epochs,
+                        steps_per_epoch=steps_per_epoch,
+                        # batch_size=batch_size,
+                        shuffle=True,
+                        # validation_data=(data_val, x_val),
+                        validation_data=val_gen,
+                        validation_steps=val_steps,
+                        callbacks=[history, checkpoint]
+                        )
+                                # TensorBoard(log_dir = path)])
 
-    # filename = f'{model_dir}/{opt.env}/{opt.dir}/{network_name}_trainloss.csv'
-    # loss_history = np.array(history.losses_train)
-    # np.savetxt(filename, loss_history, delimiter=",")
+        # filename = f'{model_dir}/{opt.env}/{opt.dir}/{network_name}_trainloss.csv'
+        # loss_history = np.array(history.losses_train)
+        # np.savetxt(filename, loss_history, delimiter=",")
             
-    # filename = f'{model_dir}/{opt.env}/{opt.dir}/{network_name}_valloss.csv'
-    # loss_history = np.array(history.losses_val)
-    # np.savetxt(filename, loss_history, delimiter=",")
+        # filename = f'{model_dir}/{opt.env}/{opt.dir}/{network_name}_valloss.csv'
+        # loss_history = np.array(history.losses_val)
+        # np.savetxt(filename, loss_history, delimiter=",")
 
     #Testing data
-    autoencoder.load_weights(f"{outfile_base}.h5")
-    autoencoder.training = False
-    tStart = time.time()
+    weights_file = f"{outfile_base}.h5"
+    print(f"--- Loading weights from {weights_file} ---")
+    autoencoder.load_weights(weights_file)
+    autoencoder.trainable = False
+    # tStart = time.time()
     if opt.aux_bool == 1:
-        x_hat = autoencoder.predict([aux_val,x_val])
+        x_hat = autoencoder.predict([aux_val, x_val])
     else:
         x_hat = autoencoder.predict(x_val)
-    tEnd = time.time()
+    # tEnd = time.time()
     # print ("It cost %f sec" % ((tEnd - tStart)/x_val.shape[0]))
     print(64*'=')
     print("For CR2={} // Adam with lr={:1.1e} // batch_size={} // norm_range={}".format(opt.rate,lr,batch_size,norm_range))
@@ -229,11 +236,32 @@ if __name__ == "__main__":
         x_val_denorm = denorm_H4(x_val,minmax_file)
     print('-> post-denorm: x_hat range is from {} to {}'.format(np.min(x_hat_denorm),np.max(x_hat_denorm)))
     print('-> post-denorm: x_val range is from {} to {} '.format(np.min(x_val_denorm),np.max(x_val_denorm)))
+
+    # new method (borrowed from PyTorch impl, trace-based)
+    x_hat_denorm = x_hat_denorm[:,0,:,:] + 1j*x_hat_denorm[:,1,:,:]
+    x_val_denorm = x_val_denorm[:,0,:,:] + 1j*x_val_denorm[:,1,:,:]
+    x_shape = x_val_denorm.shape
+    mse, nmse = get_NMSE(x_hat_denorm, x_val_denorm, return_mse=True, n_ang=x_shape[1], n_del=x_shape[2]) # one-step prediction -> estimate of single timeslot
+    results = {}
+    print(f"-> Truncated NMSE = {nmse:5.3f} | MSE = {mse:.4E}")
+    results["best_nmse"] = nmse
+    results["best_mse"] = mse
     if len(diff_spec) != 0: 
         pow_diff = load_pow_diff(diff_spec)
-    results = calc_NMSE(x_hat_denorm, x_val_denorm, T=1, diff_test=pow_diff)
+        mse, nmse = get_NMSE(x_hat_denorm, x_val_denorm, return_mse=True, n_ang=x_shape[1], n_del=x_shape[2], pow_diff_timeslot=pow_diff) # one-step prediction -> estimate of single timeslot
+        print(f"-> Full NMSE = {nmse:5.3f} | MSE = {mse:.4E}")
+        results["best_nmse_full"] = nmse
+        results["best_mse_full"] = mse
+
+    # original method (tensorflow, CsiNet-LSTM, sum of squared errors)
+    # if len(diff_spec) != 0: 
+    #     pow_diff = load_pow_diff(diff_spec)
+    # results = calc_NMSE(x_hat_denorm, x_val_denorm, T=1, diff_test=pow_diff)
+
     print(64*'=')
+
     # dump nmse results to pickle file
-    with open(f"{outfile_base}_results.pkl", "wb") as f:
-       pickle.dump(results, f) 
-       f.close()
+    if opt.train_argv:
+        with open(f"{outfile_base}_results.pkl", "wb") as f:
+            pickle.dump(results, f) 
+            f.close()
