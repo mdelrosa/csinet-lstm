@@ -65,7 +65,14 @@ if __name__ == "__main__":
         config = tf.compat.v1.ConfigProto()
         # config.gpu_options.visible_device_list = '1'
         config.gpu_options.per_process_gpu_memory_fraction = 1.0
-    
+        # physical_devices = tf.config.list_physical_devices('GPU')
+        # try:
+        #     tf.config.experimental.set_memory_growth(physical_devices[0], True)
+        # except:
+        #     # Invalid device or cannot modify virtual devices once initialized.
+        #     print("Cannot access 'set_memory_growth' - skipping.")
+        #     pass 
+
         # disable arithmetic optimizer
         off = rewriter_config_pb2.RewriterConfig.OFF
         config.graph_options.rewrite_options.arithmetic_optimization = off
@@ -75,9 +82,9 @@ if __name__ == "__main__":
 
     reset_keras()
 
-    config = tf.ConfigProto()
-    config.gpu_options.per_process_gpu_memory_fraction = 1.0
-    session = tf.Session(config=config)
+    # config = tf.ConfigProto()
+    # config.gpu_options.per_process_gpu_memory_fraction = 1.0
+    # session = tf.Session(config=config)
 
     # image params
     img_height = 32
@@ -101,15 +108,14 @@ if __name__ == "__main__":
     print('-> post-renorm: x_train range is from {} to {}'.format(np.min(x_train),np.max(x_train)))
     print('-> post-renorm: x_val range is from {} to {}'.format(np.min(x_val),np.max(x_val)))
 
-    SHUFFLE_BUFFER_SIZE = batch_size*5
+    # SHUFFLE_BUFFER_SIZE = batch_size*5
 
-    train_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_train, "input_2": x_train}, x_train)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
-    val_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_val, "input_2": x_val}, x_val)).batch(batch_size).repeat()
+    # train_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_train, "input_2": x_train}, x_train)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
+    # val_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_val, "input_2": x_val}, x_val)).batch(batch_size).repeat()
 
     # opt.rates = [512, 128, 64, 32]
     print('Build and train CsiNet for rate={}'.format(opt.rate))
     # reset_keras()
-    # learning_rate = CosineSchedule(max_lr=lr, min_lr=lr/10)
     optimizer = Adam(learning_rate=lr)
     if opt.aux_bool:
         aux = Input((opt.aux_size,))
@@ -186,16 +192,16 @@ if __name__ == "__main__":
     val_steps = x_val.shape[0] // batch_size
 
     autoencoder.fit(
-                    train_gen,
-                    # data_train,
-                    # x_train,
+                    # train_gen,
+                    data_train,
+                    x_train,
                     epochs=epochs,
-                    steps_per_epoch=steps_per_epoch,
-                    # batch_size=batch_size,
-                    # shuffle=True,
-                    # validation_data=(data_val, x_val),
-                    validation_data=val_gen,
-                    validation_steps=val_steps,
+                    # steps_per_epoch=steps_per_epoch,
+                    batch_size=batch_size,
+                    shuffle=True,
+                    validation_data=(data_val, x_val),
+                    # validation_data=val_gen,
+                    # validation_steps=val_steps,
                     callbacks=[history, checkpoint]
                     )
                             # TensorBoard(log_dir = path)])
