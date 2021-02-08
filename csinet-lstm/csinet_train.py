@@ -7,7 +7,7 @@ if __name__ == "__main__":
     import sys
     sys.path.append("/home/mdelrosa/git/brat")
     from utils.NMSE_performance import calc_NMSE, get_NMSE, denorm_H3, renorm_H4, denorm_H4, denorm_sphH4
-    from utils.data_tools import dataset_pipeline_col, subsample_batches, load_pow_diff
+    from utils.data_tools import dataset_pipeline_col, dataset_pipeline_complex, subsample_batches, load_pow_diff
     from utils.parsing import str2bool
     from utils.timing import Timer
     from utils.unpack_json import get_keys_from_json
@@ -26,10 +26,13 @@ if __name__ == "__main__":
 
     if opt.env == "outdoor":
         json_config = '../config/csinet_outdoor_cost2100_pow.json'
+        # json_config = '../config/csinet_outdoor_cost2100_pow_subsample.json' 
     elif opt.env == "indoor":
         json_config = '../config/csinet_indoor_cost2100_pow.json' 
+        # json_config = '../config/csinet_indoor_cost2100_pow_subsample.json' 
+        # json_config = '../config/csinet_indoor_cost2100_old.json' # requires dataset_pipeline_complex
 
-    model_dir, norm_range, minmax_file, dataset_spec, diff_spec, batch_num, lr, batch_size, network_name, T, data_format = get_keys_from_json(json_config, keys=['model_dir','norm_range','minmax_file','dataset_spec', 'diff_spec', 'batch_num', 'learning_rate', 'batch_size', 'network_name', 'T', 'df'])
+    model_dir, norm_range, minmax_file, dataset_spec, diff_spec, batch_num, lr, batch_size, network_name, T, data_format, subsample_prop, thresh_idx_path = get_keys_from_json(json_config, keys=['model_dir','norm_range','minmax_file','dataset_spec', 'diff_spec', 'batch_num', 'learning_rate', 'batch_size', 'network_name', 'T', 'df', 'subsample_prop', 'thresh_idx_path'])
     # lr = lrs[0]
     # batch_size = batch_sizes[0]
 
@@ -90,13 +93,22 @@ if __name__ == "__main__":
     epochs = 1 if opt.debug_flag else opt.epochs
     batch_num = 1 if opt.debug_flag else batch_num 
 
-    data_train, data_val = dataset_pipeline_col(opt.debug_flag, opt.aux_bool, dataset_spec, opt.aux_size, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv)
+    pow_diff, data_train, data_val = dataset_pipeline_col(opt.debug_flag, opt.aux_bool, dataset_spec, diff_spec, opt.aux_size, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv, subsample_prop=subsample_prop, thresh_idx_path=thresh_idx_path)
+    # data_train, data_val = dataset_pipeline_complex(opt.debug_flag, opt.aux_bool, dataset_spec, diff_spec, opt.aux_size, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv, subsample_prop=subsample_prop)
+
+    # print(f"-> pre reshape: pow_diff.shape: {pow_diff.shape}")
+    # pow_diff = np.reshape(np.real(pow_diff), (pow_diff.shape[0]*pow_diff.shape[1], -1))
+    # print(f"-> post reshape: pow_diff.shape: {pow_diff.shape}")
 
     SHUFFLE_BUFFER_SIZE = batch_size*5
 
     # loading directly from unnormalized data; normalize data
     aux_val, x_val = data_val
     x_val = renorm_H4(x_val,minmax_file)
+    print(f"-> pre reshape: x_val.shape: {x_val.shape}")
+    # x_val = np.reshape(x_val, (x_val.shape[0]*x_val.shape[1], x_val.shape[2], x_val.shape[3], x_val.shape[4]))
+    # print(f"-> post reshape: x_val.shape: {x_val.shape}")
+    # aux_val = np.tile(aux_val, (T,1))
     print(f"-> aux_val.shape: {aux_val.shape} - x_val.shape: {x_val.shape}")
     print('-> post-renorm: x_val range is from {} to {}'.format(np.min(x_val),np.max(x_val)))
     val_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_val, "input_2": x_val}, x_val)).batch(batch_size).repeat()
@@ -104,6 +116,10 @@ if __name__ == "__main__":
     if opt.train_argv:
         aux_train, x_train = data_train
         x_train = renorm_H4(x_train,minmax_file)
+        # print(f"pre reshape: x_train.shape: {x_train.shape}")
+        # x_train = np.reshape(x_train, (x_train.shape[0]*x_train.shape[1], x_train.shape[2], x_train.shape[3], x_train.shape[4]))
+        # print(f"post reshape: x_train.shape: {x_train.shape}")
+        # aux_train = np.tile(aux_train, (T,1))
         print(f"-> aux_train.shape: {aux_train.shape} - x_train.shape: {x_train.shape}")
         print('-> post-renorm: x_train range is from {} to {}'.format(np.min(x_train),np.max(x_train)))
         train_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_train, "input_2": x_train}, x_train)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
@@ -241,14 +257,14 @@ if __name__ == "__main__":
     x_hat_denorm = x_hat_denorm[:,0,:,:] + 1j*x_hat_denorm[:,1,:,:]
     x_val_denorm = x_val_denorm[:,0,:,:] + 1j*x_val_denorm[:,1,:,:]
     x_shape = x_val_denorm.shape
-    mse, nmse = get_NMSE(x_hat_denorm, x_val_denorm, return_mse=True, n_ang=x_shape[1], n_del=x_shape[2]) # one-step prediction -> estimate of single timeslot
+    mse, nmse = get_NMSE(x_hat_denorm, x_val_denorm, return_mse=True, n_ang=x_shape[1], n_del=x_shape[2]) 
     results = {}
     print(f"-> Truncated NMSE = {nmse:5.3f} | MSE = {mse:.4E}")
     results["best_nmse"] = nmse
     results["best_mse"] = mse
     if len(diff_spec) != 0: 
-        pow_diff = load_pow_diff(diff_spec)
-        mse, nmse = get_NMSE(x_hat_denorm, x_val_denorm, return_mse=True, n_ang=x_shape[1], n_del=x_shape[2], pow_diff_timeslot=pow_diff) # one-step prediction -> estimate of single timeslot
+        # pow_diff = load_pow_diff(diff_spec)
+        mse, nmse = get_NMSE(x_hat_denorm, x_val_denorm, return_mse=True, n_ang=x_shape[1], n_del=x_shape[2], pow_diff_timeslot=pow_diff) 
         print(f"-> Full NMSE = {nmse:5.3f} | MSE = {mse:.4E}")
         results["best_nmse_full"] = nmse
         results["best_mse_full"] = mse
