@@ -6,8 +6,8 @@ if __name__ == "__main__":
     import copy
     import sys
     sys.path.append("/home/mdelrosa/git/brat")
-    from utils.NMSE_performance import calc_NMSE, get_NMSE, denorm_H3, denorm_H4, denorm_sphH4
-    from utils.data_tools import dataset_pipeline, subsample_batches
+    from utils.NMSE_performance import calc_NMSE, get_NMSE, denorm_H3, renorm_H4, denorm_H4, denorm_sphH4
+    from utils.data_tools import dataset_pipeline_col, subsample_batches
     from utils.parsing import str2bool
     from utils.timing import Timer
     from utils.unpack_json import get_keys_from_json
@@ -17,25 +17,28 @@ if __name__ == "__main__":
     parser.add_argument("-l", "--dir", type=str, default=None, help="subdirectory for saving model, checkpoint, history")
     parser.add_argument("-e", "--env", type=str, default="indoor", help="environment (either indoor or outdoor)")
     parser.add_argument("-ep", "--epochs", type=int, default=10, help="number of epochs to train for")
-    parser.add_argument("-t", "--train_argv", type=int, default=1, help="flag for toggling training")
+    parser.add_argument("-t", "--train_argv", type=str2bool, default=True, help="flag for toggling training")
     parser.add_argument("-g", "--n_gpu", type=int, default=1, help="index of gpu for training")
     parser.add_argument("-r", "--rate", type=int, default=512, help="number of elements in latent code (i.e., encoding rate)")
     parser.add_argument("-de", "--depth", type=int, default=3, help="depth of lstm")
     parser.add_argument("-p", "--pretrained_bool", type=str2bool, default=True, help="bool for using pretrained CsiNet for each timeslot")
     parser.add_argument("-lo", "--load_bool", type=str2bool, default=False, help="bool for loading weights into CsiNet-LSTM network")
+    parser.add_argument("-a", "--aux_bool", type=str2bool, default=True, help="bool for building CsiNet with auxiliary input")
+    parser.add_argument("-m", "--aux_size", type=int, default=512, help="integer for auxiliary input's latent rate")
     opt = parser.parse_args()
 
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID";  # The GPU id to use, usually either "0" or "1";
     os.environ["CUDA_VISIBLE_DEVICES"]="{}".format(opt.n_gpu);  # Do other imports now...
     print("debug_flag: {} -- train_argv: {}".format(opt.debug_flag, opt.train_argv))
 
-    json_config = '../config/csinet_lstm_outdoor_cost2100.json' # 0 epochs 
+    if opt.env == "indoor":
+        json_config = '../config/csinet_lstm_indoor_cost2100.json' # 0 epochs 
+    elif opt.env == "outdoor":
+        json_config = '../config/csinet_lstm_outdoor_cost2100.json' # 0 epochs 
     # quant_config = "../config/quant/10bits.json"
 
-    M_1, data_format, network_name, subnetwork_name, model_dir, norm_range, minmax_file, share_bool, T, dataset_spec, batch_num, lrs, batch_sizes = get_keys_from_json(json_config, keys=['M_1', 'df', 'network_name', 'subnetwork_name', 'model_dir', 'norm_range', 'minmax_file', 'share_bool', 'T', 'dataset_spec', 'batch_num', 'lrs', 'batch_sizes'])
-    aux_bool, quant_bool, LSTM_only_bool, pass_through_bool, t1_train, t2_train, lstm_latent_bool = get_keys_from_json(json_config, keys=['aux_bool', 'quant_bool', 'LSTM_only_bool', 'pass_through_bool', 't1_train', 't2_train', 'lstm_latent_bool'],is_bool=True) # import these as booleans rather than int
-    lr = lrs[0]
-    batch_size = batch_sizes[0]
+    M_1, data_format, network_name, subnetwork_name, model_dir, norm_range, minmax_file, share_bool, T, dataset_spec, diff_spec, batch_num, lr, batch_size, subsample_prop = get_keys_from_json(json_config, keys=['M_1', 'df', 'network_name', 'subnetwork_name', 'model_dir', 'norm_range', 'minmax_file', 'share_bool', 'T', 'dataset_spec', 'diff_spec', 'batch_num', 'lr', 'batch_size', 'subsample_prop'])
+    aux_bool, quant_bool, LSTM_only_bool, pass_through_bool, t1_train, t2_train, lstm_latent_bool = get_keys_from_json(json_config, keys=['aux_bool', 'quant_bool', 'LSTM_only_bool', 'pass_through_bool', 't1_train', 't2_train', 'lstm_latent_bool'],is_bool=True) # import these as booleans rather than int, str
 
     import scipy.io as sio 
     import numpy as np
@@ -91,13 +94,43 @@ if __name__ == "__main__":
     batch_num = 1 if opt.debug_flag else batch_num # we'll use batch_num-1 for training and 1 for validation
     epochs = 1 if opt.debug_flag else opt.epochs
 
-    data_train, data_val, data_test = dataset_pipeline(batch_num, opt.debug_flag, aux_bool, dataset_spec, M_1, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv, merge_val_test = True)
-    aux_train, x_train = data_train
-    aux_val, x_val = data_val
-    aux_test, x_test = data_test
+    # data_train, data_val, data_test = dataset_pipeline(batch_num, opt.debug_flag, aux_bool, dataset_spec, M_1, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv, merge_val_test = True)
+    pow_diff, data_train, data_val = dataset_pipeline_col(opt.debug_flag, opt.aux_bool, dataset_spec, diff_spec, opt.aux_size, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv, subsample_prop=subsample_prop)
 
     # tf Dataset object
     # SHUFFLE_BUFFER_SIZE = batch_size*5
+
+    # def data_generator(data):
+    #     i = 0
+    #     while i < data.shape[0]:
+    #         yield data[i,:,:,:,:], data[i,:,:,:,:]
+    #         i += 1
+
+    # loading directly from unnormalized data; normalize data
+    aux_val, x_val = data_val
+    x_val = renorm_H4(x_val,minmax_file)
+    data_val = aux_val, x_val 
+    print(f"-> pre reshape: x_val.shape: {x_val.shape}")
+    # x_val = np.reshape(x_val, (x_val.shape[0]*x_val.shape[1], x_val.shape[2], x_val.shape[3], x_val.shape[4]))
+    # print(f"-> post reshape: x_val.shape: {x_val.shape}")
+    # aux_val = np.tile(aux_val, (T,1))
+    print(f"-> aux_val.shape: {aux_val.shape} - x_val.shape: {x_val.shape}")
+    print('-> post-renorm: x_val range is from {} to {}'.format(np.min(x_val),np.max(x_val)))
+    # val_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_val, "input_2": x_val}, x_val)).batch(batch_size).repeat()
+    # val_gen = tf.data.Dataset.from_generator(data_generator, args=[x_val], output_types=(tf.float32, tf.float32), output_shapes=((None,)+x_val.shape[1:], (None,)+x_val.shape[1:])).batch(batch_size).repeat()
+
+    if opt.train_argv:
+        aux_train, x_train = data_train
+        x_train = renorm_H4(x_train,minmax_file)
+        data_train = [aux_train, x_train]
+        # print(f"pre reshape: x_train.shape: {x_train.shape}")
+        # x_train = np.reshape(x_train, (x_train.shape[0]*x_train.shape[1], x_train.shape[2], x_train.shape[3], x_train.shape[4]))
+        # print(f"post reshape: x_train.shape: {x_train.shape}")
+        # aux_train = np.tile(aux_train, (T,1))
+        print(f"-> aux_train.shape: {aux_train.shape} - x_train.shape: {x_train.shape}")
+        print('-> post-renorm: x_train range is from {} to {}'.format(np.min(x_train),np.max(x_train)))
+        # train_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_train, "input_2": x_train}, x_train)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
+        # train_gen = tf.data.Dataset.from_generator(data_generator, args=[x_train], output_types=(tf.float32, tf.float32), output_shapes=((None,)+x_train.shape[1:], (None,)+x_train.shape[1:])).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
 
     # train_gen = tf.data.Dataset.from_tensor_slices((data_train, x_train)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
     # val_gen = tf.data.Dataset.from_tensor_slices((data_val, x_val)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
@@ -120,12 +153,7 @@ if __name__ == "__main__":
     #     print('test: {}'.format(np.mean(np.sum(x_quant_test_denorm-x_test_denorm))))
     #     calc_NMSE(x_quant_test_denorm,x_test_denorm,T=T)
 
-    # CRs = [128,64,32] # sweep compression ratios for latent space
-    # for i in range(len(encoded_dims)):
-    #     M_2 = encoded_dims[i]
-        # date = dates[i]
-
-    M_2 = opt.rate
+    M_1, M_2 = opt.aux_size, opt.rate 
     reset_keras()
     try:
         optimizer = Adam(learning_rate=lr, beta_1=0.9, beta_2=0.999)
@@ -150,8 +178,8 @@ if __name__ == "__main__":
     outpath_base = f"{model_dir}/{opt.env}"
     if opt.dir != None:
         outpath_base += "/" + opt.dir 
-    outfile_base = f"{outpath_base}/{network_name}"
-    subnetwork_path = f"{outpath_base}/{subnetwork_name}"
+    outfile_base = f"{outpath_base}/cr{opt.rate}/{network_name}"
+    subnetwork_spec = [outpath_base, subnetwork_name]
     if opt.load_bool:
         # if (LSTM_only_bool):
         #     file = f"{file_base}_{opt.env}_D{opt.depth}"
@@ -159,26 +187,26 @@ if __name__ == "__main__":
         #     file = file_base+(opt.env)+'_dim'+str(M_2)+"_{}".format(date)
         # else:
         #     file = "weights_test" 
-        CsiNet_LSTM_model = CsiNet_LSTM(img_channels, img_height, img_width, T, M_1, M_2, envir=opt.env, LSTM_depth=opt.depth, data_format=data_format, t1_trainable=t1_train, t2_trainable=t2_train, share_bool=share_bool, pass_through_bool=pass_through_bool, LSTM_only_bool=LSTM_only_bool, subnetwork_path=subnetwork_path, pretrained_bool=opt.pretrained_bool)
+        CsiNet_LSTM_model = CsiNet_LSTM(img_channels, img_height, img_width, T, M_1, M_2, envir=opt.env, LSTM_depth=opt.depth, data_format=data_format, t1_trainable=t1_train, t2_trainable=t2_train, share_bool=share_bool, pass_through_bool=pass_through_bool, LSTM_only_bool=LSTM_only_bool, subnetwork_spec=subnetwork_spec, pretrained_bool=opt.pretrained_bool)
         # outfile = "{}/model_{}.h5".format(model_dir,file)
         CsiNet_LSTM_model.load_weights(f"{outfile_base}.h5")
         # CsiNet_LSTM_model = tf.keras.models.load_model(outfile)
         print ("--- Pre-loaded network performance is... ---")
-        x_hat = CsiNet_LSTM_model.predict(data_test)
+        x_hat = CsiNet_LSTM_model.predict(data_val)
 
         print("For Adam with lr={:1.1e} // batch_size={} // norm_range={}".format(lr,batch_size,norm_range))
         print("x_hat.dtype: {}".format(x_hat.dtype)) # sanity check on output datatype
         if norm_range == "norm_H3":
             x_hat_denorm = denorm_H3(x_hat,minmax_file)
-            x_test_denorm = denorm_H3(x_test,minmax_file)
+            x_val_denorm = denorm_H3(x_val,minmax_file)
         if norm_range == "norm_H4":
             x_hat_denorm = denorm_H4(x_hat,minmax_file)
-            x_test_denorm = denorm_H4(x_test,minmax_file)
+            x_val_denorm = denorm_H4(x_val,minmax_file)
         print('-> x_hat range is from {} to {}'.format(np.min(x_hat_denorm),np.max(x_hat_denorm)))
-        print('-> x_test range is from {} to {} '.format(np.min(x_test_denorm),np.max(x_test_denorm)))
-        calc_NMSE(x_hat_denorm,x_test_denorm,T=T)
+        print('-> x_val range is from {} to {} '.format(np.min(x_val_denorm),np.max(x_val_denorm)))
+        calc_NMSE(x_hat_denorm,x_val_denorm,T=T)
     else:
-        CsiNet_LSTM_model = CsiNet_LSTM(img_channels, img_height, img_width, T, M_1, M_2, LSTM_depth=opt.depth, data_format=data_format, t1_trainable=t1_train, t2_trainable=t2_train, share_bool=share_bool, pass_through_bool=pass_through_bool, LSTM_only_bool=LSTM_only_bool, subnetwork_path=subnetwork_path, pretrained_bool=opt.pretrained_bool)
+        CsiNet_LSTM_model = CsiNet_LSTM(img_channels, img_height, img_width, T, M_1, M_2, LSTM_depth=opt.depth, data_format=data_format, t1_trainable=t1_train, t2_trainable=t2_train, share_bool=share_bool, pass_through_bool=pass_through_bool, LSTM_only_bool=LSTM_only_bool, subnetwork_spec=subnetwork_spec, pretrained_bool=opt.pretrained_bool)
         CsiNet_LSTM_model.compile(optimizer=optimizer, loss='mse')
 
     if (opt.train_argv):
@@ -200,33 +228,32 @@ if __name__ == "__main__":
                         shuffle=True,
                         validation_data=(data_val, x_val),
                         callbacks=[checkpoint,
-                                    early,
+                                    # early,
                                     history])
                                     # TensorBoard(log_dir = path),
             
-        filename = f'{model_dir}/{opt.env}/{opt.dir}/{network_name}_trainloss.csv'
+        filename = f'{outpath_base}_trainloss.csv'
         loss_history = np.array(history.losses_train)
         np.savetxt(filename, loss_history, delimiter=",")
             
-        filename = f'{model_dir}/{opt.env}/{opt.dir}/{network_name}_valloss.csv'
+        filename = f'{outpath_base}_valloss.csv'
         loss_history = np.array(history.losses_val)
         np.savetxt(filename, loss_history, delimiter=",")
             
-        #Testing data
-        tStart = time.time()
-        x_hat = CsiNet_LSTM_model.predict(data_test)
-        tEnd = time.time()
-        print ("It cost %f sec per sample (%f samples)" % ((tEnd - tStart)/x_test.shape[0],x_test.shape[0]))
+    #Testing data
+    tStart = time.time()
+    x_hat = CsiNet_LSTM_model.predict(data_val)
+    tEnd = time.time()
+    print ("It cost %f sec per sample (%f samples)" % ((tEnd - tStart)/x_val.shape[0],x_val.shape[0]))
             
-        print("For Adam with lr={:1.1e} // batch_size={} // norm_range={}".format(lr,batch_size,norm_range))
-        if norm_range == "norm_H3":
-            x_hat_denorm = denorm_H3(x_hat,minmax_file)
-            x_test_denorm = denorm_H3(x_test,minmax_file)
-        elif norm_range == "norm_H4":
-            x_hat_denorm = denorm_H4(x_hat,minmax_file)
-            x_test_denorm = denorm_H4(x_test,minmax_file)
-        print('-> x_hat range is from {} to {}'.format(np.min(x_hat_denorm),np.max(x_hat_denorm)))
-        print('-> x_test range is from {} to {} '.format(np.min(x_test_denorm),np.max(x_test_denorm)))
-        calc_NMSE(x_hat_denorm,x_test_denorm,T=T)
-    else:
-        print("--- train_argv == False -> Skipping training ---")
+    print("For Adam with lr={:1.1e} // batch_size={} // norm_range={}".format(lr,batch_size,norm_range))
+    if norm_range == "norm_H3":
+        x_hat_denorm = denorm_H3(x_hat,minmax_file)
+        x_val_denorm = denorm_H3(x_val,minmax_file)
+    elif norm_range == "norm_H4":
+        x_hat_denorm = denorm_H4(x_hat,minmax_file)
+        x_val_denorm = denorm_H4(x_val,minmax_file)
+    print('-> x_hat range is from {} to {}'.format(np.min(x_hat_denorm),np.max(x_hat_denorm)))
+    print('-> x_val range is from {} to {} '.format(np.min(x_val_denorm),np.max(x_val_denorm)))
+
+    calc_NMSE(x_hat_denorm,x_val_denorm,T=T,pow_diff=pow_diff)
