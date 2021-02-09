@@ -7,7 +7,7 @@ if __name__ == "__main__":
     import sys
     sys.path.append("/home/mdelrosa/git/brat")
     from utils.NMSE_performance import calc_NMSE, get_NMSE, denorm_H3, renorm_H4, denorm_H4, denorm_sphH4
-    from utils.data_tools import dataset_pipeline_col, subsample_batches, load_pow_diff
+    from utils.data_tools import dataset_pipeline_col, dataset_pipeline_complex, subsample_batches, load_pow_diff
     from utils.parsing import str2bool
     from utils.timing import Timer
     from utils.unpack_json import get_keys_from_json
@@ -16,22 +16,25 @@ if __name__ == "__main__":
     parser.add_argument("-l", "--dir", type=str, default=None, help="subdirectory for saving model, checkpoint, history")
     parser.add_argument("-e", "--env", type=str, default="indoor", help="environment (either indoor or outdoor)")
     parser.add_argument("-ep", "--epochs", type=int, default=10, help="number of epochs to train for")
-    parser.add_argument("-t", "--train_argv", type=int, default=1, help="flag for toggling training")
+    parser.add_argument("-tr", "--train_argv", type=str2bool, default=True, help="flag for toggling training")
     parser.add_argument("-g", "--n_gpu", type=int, default=1, help="index of gpu for training")
     parser.add_argument("-r", "--rate", type=int, default=512, help="number of elements in latent code (i.e., encoding rate)")
-    parser.add_argument("-lo", "--load_bool", type=str2bool, default=False, help="bool for loading weights into CsiNet-LSTM network")
+    parser.add_argument("-lo", "--load_bool", type=str2bool, default=False, help="bool for loading weights into CsiNet")
     parser.add_argument("-a", "--aux_bool", type=str2bool, default=True, help="bool for building CsiNet with auxiliary input")
     parser.add_argument("-m", "--aux_size", type=int, default=512, help="integer for auxiliary input's latent rate")
     opt = parser.parse_args()
 
     if opt.env == "outdoor":
         json_config = '../config/csinet_outdoor_cost2100_pow.json'
+        # json_config = '../config/csinet_outdoor_cost2100_pow_subsample.json' 
     elif opt.env == "indoor":
         json_config = '../config/csinet_indoor_cost2100_pow.json' 
+        # json_config = '../config/csinet_indoor_cost2100_pow_subsample.json' 
+        # json_config = '../config/csinet_indoor_cost2100_old.json' # requires dataset_pipeline_complex
 
-    model_dir, norm_range, minmax_file, dataset_spec, diff_spec, batch_num, lrs, batch_sizes, network_name, T, data_format = get_keys_from_json(json_config, keys=['model_dir','norm_range','minmax_file','dataset_spec', 'diff_spec', 'batch_num', 'lrs', 'batch_sizes', 'network_name', 'T', 'df'])
-    lr = lrs[0]
-    batch_size = batch_sizes[0]
+    model_dir, norm_range, minmax_file, dataset_spec, diff_spec, batch_num, lr, batch_size, network_name, T, data_format, subsample_prop, thresh_idx_path = get_keys_from_json(json_config, keys=['model_dir','norm_range','minmax_file','dataset_spec', 'diff_spec', 'batch_num', 'learning_rate', 'batch_size', 'network_name', 'T', 'df', 'subsample_prop', 'thresh_idx_path'])
+    # lr = lrs[0]
+    # batch_size = batch_sizes[0]
 
     # encoded_dims, dates, result_dir, aux_bool, opt.rate, data_format, epochs, t1_train, t2_train, gpu_num, lstm_latent_bool, conv_lstm_bool = unpack_json(json_config)
 
@@ -41,7 +44,6 @@ if __name__ == "__main__":
 
     import tensorflow as tf
     from tensorflow.keras.optimizers import Adam
-    from tensorflow.keras.layers import Dense, BatchNormalization, Reshape, Conv2D, add, LeakyReLU
     from tensorflow.keras import Input
     from tensorflow.keras.models import Model
     from tensorflow.keras.callbacks import TensorBoard, Callback, ModelCheckpoint, EarlyStopping
@@ -98,20 +100,37 @@ if __name__ == "__main__":
     epochs = 1 if opt.debug_flag else opt.epochs
     batch_num = 1 if opt.debug_flag else batch_num 
 
-    data_train, data_val = dataset_pipeline_col(opt.debug_flag, opt.aux_bool, dataset_spec, opt.aux_size, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv, merge_val_test = True)
-    aux_train, x_train = data_train
-    aux_val, x_val = data_val
+    pow_diff, data_train, data_val = dataset_pipeline_col(opt.debug_flag, opt.aux_bool, dataset_spec, diff_spec, opt.aux_size, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv, subsample_prop=subsample_prop, thresh_idx_path=thresh_idx_path)
+    # data_train, data_val = dataset_pipeline_complex(opt.debug_flag, opt.aux_bool, dataset_spec, diff_spec, opt.aux_size, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv, subsample_prop=subsample_prop)
 
-    # loading directly from unnormalized data; normalize data
-    x_train = renorm_H4(x_train,minmax_file)
-    x_val = renorm_H4(x_val,minmax_file)
-    print('-> post-renorm: x_train range is from {} to {}'.format(np.min(x_train),np.max(x_train)))
-    print('-> post-renorm: x_val range is from {} to {}'.format(np.min(x_val),np.max(x_val)))
+    # print(f"-> pre reshape: pow_diff.shape: {pow_diff.shape}")
+    # pow_diff = np.reshape(np.real(pow_diff), (pow_diff.shape[0]*pow_diff.shape[1], -1))
+    # print(f"-> post reshape: pow_diff.shape: {pow_diff.shape}")
 
     # SHUFFLE_BUFFER_SIZE = batch_size*5
 
-    # train_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_train, "input_2": x_train}, x_train)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
+    # loading directly from unnormalized data; normalize data
+    aux_val, x_val = data_val
+    print('-> pre-renorm: x_val range is from {} to {}'.format(np.min(x_val),np.max(x_val)))
+    x_val = renorm_H4(x_val,minmax_file)
+    print(f"-> pre reshape: x_val.shape: {x_val.shape}")
+    # x_val = np.reshape(x_val, (x_val.shape[0]*x_val.shape[1], x_val.shape[2], x_val.shape[3], x_val.shape[4]))
+    # print(f"-> post reshape: x_val.shape: {x_val.shape}")
+    # aux_val = np.tile(aux_val, (T,1))
+    print(f"-> aux_val.shape: {aux_val.shape} - x_val.shape: {x_val.shape}")
+    print('-> post-renorm: x_val range is from {} to {}'.format(np.min(x_val),np.max(x_val)))
     # val_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_val, "input_2": x_val}, x_val)).batch(batch_size).repeat()
+
+    if opt.train_argv:
+        aux_train, x_train = data_train
+        x_train = renorm_H4(x_train,minmax_file)
+        # print(f"pre reshape: x_train.shape: {x_train.shape}")
+        # x_train = np.reshape(x_train, (x_train.shape[0]*x_train.shape[1], x_train.shape[2], x_train.shape[3], x_train.shape[4]))
+        # print(f"post reshape: x_train.shape: {x_train.shape}")
+        # aux_train = np.tile(aux_train, (T,1))
+        print(f"-> aux_train.shape: {aux_train.shape} - x_train.shape: {x_train.shape}")
+        print('-> post-renorm: x_train range is from {} to {}'.format(np.min(x_train),np.max(x_train)))
+        # train_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_train, "input_2": x_train}, x_train)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
 
     # opt.rates = [512, 128, 64, 32]
     print('Build and train CsiNet for rate={}'.format(opt.rate))
@@ -174,7 +193,7 @@ if __name__ == "__main__":
     # early stopping callback
     es = EarlyStopping(monitor='val_loss',mode='min',patience=20,verbose=1)
 
-    path = f'{outfile_base}_tensorboard'
+    # path = f'{outfile_base}_tensorboard'
 
     # save+serialize model to JSON
     # model_json = autoencoder.to_json()
@@ -215,14 +234,16 @@ if __name__ == "__main__":
     # np.savetxt(filename, loss_history, delimiter=",")
 
     #Testing data
-    autoencoder.load_weights(f"{outfile_base}.h5")
-    autoencoder.training = False
-    tStart = time.time()
+    weights_file = f"{outfile_base}.h5"
+    print(f"--- Loading weights from {weights_file} ---")
+    autoencoder.load_weights(weights_file)
+    autoencoder.trainable = False
+    # tStart = time.time()
     if opt.aux_bool == 1:
-        x_hat = autoencoder.predict([aux_val,x_val])
+        x_hat = autoencoder.predict([aux_val, x_val])
     else:
         x_hat = autoencoder.predict(x_val)
-    tEnd = time.time()
+    # tEnd = time.time()
     # print ("It cost %f sec" % ((tEnd - tStart)/x_val.shape[0]))
     print(64*'=')
     print("For CR2={} // Adam with lr={:1.1e} // batch_size={} // norm_range={}".format(opt.rate,lr,batch_size,norm_range))
@@ -236,11 +257,32 @@ if __name__ == "__main__":
         x_val_denorm = denorm_H4(x_val,minmax_file)
     print('-> post-denorm: x_hat range is from {} to {}'.format(np.min(x_hat_denorm),np.max(x_hat_denorm)))
     print('-> post-denorm: x_val range is from {} to {} '.format(np.min(x_val_denorm),np.max(x_val_denorm)))
+
+    # new method (borrowed from PyTorch impl, trace-based)
+    x_hat_denorm = x_hat_denorm[:,0,:,:] + 1j*x_hat_denorm[:,1,:,:]
+    x_val_denorm = x_val_denorm[:,0,:,:] + 1j*x_val_denorm[:,1,:,:]
+    x_shape = x_val_denorm.shape
+    mse, nmse = get_NMSE(x_hat_denorm, x_val_denorm, return_mse=True, n_ang=x_shape[1], n_del=x_shape[2]) 
+    results = {}
+    print(f"-> Truncated NMSE = {nmse:5.3f} | MSE = {mse:.4E}")
+    results["best_nmse"] = nmse
+    results["best_mse"] = mse
     if len(diff_spec) != 0: 
-        pow_diff = load_pow_diff(diff_spec)
-    results = calc_NMSE(x_hat_denorm, x_val_denorm, T=1, diff_test=pow_diff)
+        # pow_diff = load_pow_diff(diff_spec)
+        mse, nmse = get_NMSE(x_hat_denorm, x_val_denorm, return_mse=True, n_ang=x_shape[1], n_del=x_shape[2], pow_diff_timeslot=pow_diff) 
+        print(f"-> Full NMSE = {nmse:5.3f} | MSE = {mse:.4E}")
+        results["best_nmse_full"] = nmse
+        results["best_mse_full"] = mse
+
+    # original method (tensorflow, CsiNet-LSTM, sum of squared errors)
+    # if len(diff_spec) != 0: 
+    #     pow_diff = load_pow_diff(diff_spec)
+    # results = calc_NMSE(x_hat_denorm, x_val_denorm, T=1, diff_test=pow_diff)
+
     print(64*'=')
+
     # dump nmse results to pickle file
-    with open(f"{outfile_base}_results.pkl", "wb") as f:
-       pickle.dump(results, f) 
-       f.close()
+    if opt.train_argv:
+        with open(f"{outfile_base}_results.pkl", "wb") as f:
+            pickle.dump(results, f) 
+            f.close()

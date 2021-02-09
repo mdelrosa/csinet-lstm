@@ -11,15 +11,6 @@
 
 source $HOME/.bashrc 
 
-python csinet_train.py -d 0 -e outdoor -r 512 -l csinet -ep 10
+python csinet_train.py -d 0 -g 0 -e indoor -r 512 -l csinet -ep 1000
 
 #wait
-~
-~
-~
-~
-~
-~
-~
-~
-

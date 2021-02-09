@@ -9,24 +9,11 @@ from tensorflow.keras.callbacks import TensorBoard, Callback
 from tensorflow.keras.utils import plot_model
 from tensorflow.keras import initializers 
 from tensorflow.keras.optimizers import Adam
-# except:
-# 	from keras.layers import concatenate, Lambda, Dense, BatchNormalization, Reshape, Conv2D, add, LeakyReLU, LSTM, CuDNNLSTM, ConvLSTM2D
-# 	from keras import Input
-# 	from keras.models import Model, model_from_json
-# 	from keras.callbacks import TensorBoard, Callback
-# 	from keras.utils import plot_model
-# 	from keras import initializers 
-# 	from keras.optimizers import Adam
 import scipy.io as sio 
 import numpy as np
 import math
 import time
-# from CsiNet import *
 from csinet import *
-# from unpack_json import *
-
-# tf.reset_default_graph()
-# tf.enable_eager_execution()
 
 # image params
 img_height = 32
@@ -61,7 +48,7 @@ def make_CsiNet(aux_bool,M_1, img_channels, img_height, img_width, encoded_dim, 
         # model.compile(optimizer=optimizer, loss='mse') 
         return model
 
-def CsiNet_LSTM(img_channels, img_height, img_width, T, M_1, M_2, envir="indoor", LSTM_depth=3,data_format='channels_first',t1_trainable=False,t2_trainable=True,pre_t1_bool=True,pre_t2_bool=True,aux_bool=True, share_bool=True, pass_through_bool=False, lstm_latent_bool=False, pre_lstm_bool=True, conv_lstm_bool=False, subnetwork_path=".", pretrained_bool=True, LSTM_only_bool=False):
+def CsiNet_LSTM(img_channels, img_height, img_width, T, M_1, M_2, envir="indoor", LSTM_depth=3,data_format='channels_first',t1_trainable=False,t2_trainable=True,pre_t1_bool=True,pre_t2_bool=True,aux_bool=True, share_bool=True, pass_through_bool=False, lstm_latent_bool=False, pre_lstm_bool=True, conv_lstm_bool=False, subnetwork_spec=".", pretrained_bool=True, LSTM_only_bool=False):
         # base CSINet models
         aux=Input((M_1,))
         if(data_format == "channels_last"):
@@ -82,7 +69,7 @@ def CsiNet_LSTM(img_channels, img_height, img_width, T, M_1, M_2, envir="indoor"
                 #     dim, date, model_dir = unpack_compact_json(config_hi)
                 #     network_name = get_network_name(config_hi)
                 #     CsiNet_hi = load_weights_into_model(network_name,model_dir,CsiNet_hi)
-                weights_file = f"{subnetwork_path}_cr{M_1}.h5"
+                weights_file = f"{subnetwork_spec[0]}/cr{M_1}/{subnetwork_spec[1]}.h5"
                 CsiNet_hi.load_weights(weights_file)
             CsiNet_hi._name = "CsiNet_hi"
             CsiNet_hi.trainable = t1_trainable
@@ -111,7 +98,7 @@ def CsiNet_LSTM(img_channels, img_height, img_width, T, M_1, M_2, envir="indoor"
                                         #         config_lo = 'config/outdoor300/v2/csinet_cr{}.json'.format(M_2)
                                         #     else:
                                         #         print("Invalid environment variable.")
-                                        weights_file = f"{subnetwork_path}_cr{M_2}.h5" 
+                                        weights_file = f"{subnetwork_spec[0]}/cr{M_2}/{subnetwork_spec[1]}.h5"
                                         CsiNet_lo.load_weights(weights_file)
                                         #     dim, date, model_dir = unpack_compact_json(config_lo)
                                         #     network_name = get_network_name(config_lo)
