@@ -113,6 +113,7 @@ if __name__ == "__main__":
     aux_val, x_val = data_val
     print('-> pre-renorm: x_val range is from {} to {}'.format(np.min(x_val),np.max(x_val)))
     x_val = renorm_H4(x_val,minmax_file)
+    data_val = aux_val, x_val 
     print(f"-> pre reshape: x_val.shape: {x_val.shape}")
     # x_val = np.reshape(x_val, (x_val.shape[0]*x_val.shape[1], x_val.shape[2], x_val.shape[3], x_val.shape[4]))
     # print(f"-> post reshape: x_val.shape: {x_val.shape}")
@@ -124,6 +125,7 @@ if __name__ == "__main__":
     if opt.train_argv:
         aux_train, x_train = data_train
         x_train = renorm_H4(x_train,minmax_file)
+        data_train = aux_train, x_train 
         # print(f"pre reshape: x_train.shape: {x_train.shape}")
         # x_train = np.reshape(x_train, (x_train.shape[0]*x_train.shape[1], x_train.shape[2], x_train.shape[3], x_train.shape[4]))
         # print(f"post reshape: x_train.shape: {x_train.shape}")
@@ -177,53 +179,54 @@ if __name__ == "__main__":
     autoencoder.compile(optimizer=optimizer, loss='mse')
     print(autoencoder.summary())
 
-    class LossHistory(Callback):
-            def on_train_begin(self, logs={}):
-                    self.losses_train = []
-                    self.losses_val = []
+    if opt.train_argv:
+        class LossHistory(Callback):
+                def on_train_begin(self, logs={}):
+                        self.losses_train = []
+                        self.losses_val = []
 
-            def on_batch_end(self, batch, logs={}):
-                    self.losses_train.append(logs.get('loss'))
-                        
-            def on_epoch_end(self, epoch, logs={}):
-                    self.losses_val.append(logs.get('val_loss'))
+                def on_batch_end(self, batch, logs={}):
+                        self.losses_train.append(logs.get('loss'))
+                            
+                def on_epoch_end(self, epoch, logs={}):
+                        self.losses_val.append(logs.get('val_loss'))
 
-    history = LossHistory()
+        history = LossHistory()
 
-    # early stopping callback
-    es = EarlyStopping(monitor='val_loss',mode='min',patience=20,verbose=1)
+        # early stopping callback
+        es = EarlyStopping(monitor='val_loss',mode='min',patience=20,verbose=1)
 
-    # path = f'{outfile_base}_tensorboard'
+        # path = f'{outfile_base}_tensorboard'
 
-    # save+serialize model to JSON
-    # model_json = autoencoder.to_json()
-    # outfile = "{}/model_{}.json".format(result_dir,file)
-    # with open(outfile, "w") as json_file:
-    #         json_file.write(model_json)
-    # serialize weights to HDF5
-    # outfile = "{}/model_{}.h5".format(result_dir,file)
-    # autoencoder.save_weights(outfile)
+        # save+serialize model to JSON
+        # model_json = autoencoder.to_json()
+        # outfile = "{}/model_{}.json".format(result_dir,file)
+        # with open(outfile, "w") as json_file:
+        #         json_file.write(model_json)
+        # serialize weights to HDF5
+        # outfile = "{}/model_{}.h5".format(result_dir,file)
+        # autoencoder.save_weights(outfile)
 
-    outfile = f"{outfile_base}.h5"
-    checkpoint = ModelCheckpoint(outfile, monitor="val_loss",verbose=1,save_best_only=True,mode="min")
+        outfile = f"{outfile_base}.h5"
+        checkpoint = ModelCheckpoint(outfile, monitor="val_loss",verbose=1,save_best_only=True,mode="min")
 
-    steps_per_epoch = x_train.shape[0] // batch_size
-    val_steps = x_val.shape[0] // batch_size
+        steps_per_epoch = x_train.shape[0] // batch_size
+        val_steps = x_val.shape[0] // batch_size
 
-    autoencoder.fit(
-                    # train_gen,
-                    data_train,
-                    x_train,
-                    epochs=epochs,
-                    # steps_per_epoch=steps_per_epoch,
-                    batch_size=batch_size,
-                    shuffle=True,
-                    validation_data=(data_val, x_val),
-                    # validation_data=val_gen,
-                    # validation_steps=val_steps,
-                    callbacks=[history, checkpoint]
-                    )
-                            # TensorBoard(log_dir = path)])
+        autoencoder.fit(
+                        # train_gen,
+                        data_train,
+                        x_train,
+                        epochs=epochs,
+                        # steps_per_epoch=steps_per_epoch,
+                        batch_size=batch_size,
+                        shuffle=True,
+                        validation_data=(data_val, x_val),
+                        # validation_data=val_gen,
+                        # validation_steps=val_steps,
+                        callbacks=[history, checkpoint]
+                        )
+                                # TensorBoard(log_dir = path)])
 
     # filename = f'{model_dir}/{opt.env}/{opt.dir}/{network_name}_trainloss.csv'
     # loss_history = np.array(history.losses_train)

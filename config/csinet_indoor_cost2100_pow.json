@@ -8,11 +8,11 @@
 	"learning_rate": 0.001,
 	"batch_size": 200,
 	"network_name": "csinet",
-	"minmax_file": "/pylon5/ec5phkp/mdelrosa/data/indoor_pow/without_outliers/Data100_minmax.csv",
+	"minmax_file": "/pylon5/ec5phkp/mdelrosa/data/indoor_pow/power/Data100_minmax.csv",
 	"norm_range": "norm_H4",
 	"T":1,
 	"subsample_prop": 1,
 	"n_delay": 32,
 	"img_channels": 2, 
-	"thresh_idx_path": "/pylon5/ec5phkp/mdelrosa/data/indoor_pow/without_outliers/H_thresh_idx.mat"
+	"thresh_idx_path": "/pylon5/ec5phkp/mdelrosa/data/indoor_pow/power/H_pow_idx.mat"
 }

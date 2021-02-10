@@ -11,6 +11,9 @@
 
 source $HOME/.bashrc 
 
-python csinet_train.py -d 0 -g 0 -e indoor -r 512 -l csinet -ep 1000
+python csinet_train.py -d 0 -g 0 -e indoor -r 256 -l csinet -ep 1000
+python csinet_train.py -d 0 -g 0 -e indoor -r 128 -l csinet -ep 1000
+python csinet_train.py -d 0 -g 0 -e indoor -r 64 -l csinet -ep 1000
+python csinet_train.py -d 0 -g 0 -e indoor -r 32 -l csinet -ep 1000
 
 #wait
