@@ -1,5 +1,19 @@
-python csinet_train.py -d 0 -g 0 -l 2000ep -r 512 -e indoor -ep 2000
-python csinet_train.py -d 0 -g 0 -l 2000ep -r 256 -e indoor -ep 2000
-python csinet_train.py -d 0 -g 0 -l 2000ep -r 128 -e indoor -ep 2000
-python csinet_train.py -d 0 -g 0 -l 2000ep -r 64 -e indoor -ep 2000
-python csinet_train.py -d 0 -g 0 -l 2000ep -r 32 -e indoor -ep 2000
+#!/bin/bash -l
+
+#SBATCH
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=mdelrosa@ucdavis.edu
+#SBATCH -p GPU-AI 
+#SBATCH --job-name=cr512_out
+#SBATCH --time=0-12
+#SBATCH --gres=gpu:volta16:1
+#SBATCH --mem=64000 # memory required by job
+
+source $HOME/.bashrc 
+
+python csinet_train.py -d 0 -g 0 -e indoor -r 256 -l csinet -ep 1000
+python csinet_train.py -d 0 -g 0 -e indoor -r 128 -l csinet -ep 1000
+python csinet_train.py -d 0 -g 0 -e indoor -r 64 -l csinet -ep 1000
+python csinet_train.py -d 0 -g 0 -e indoor -r 32 -l csinet -ep 1000
+
+#wait
