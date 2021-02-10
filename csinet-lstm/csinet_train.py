@@ -67,7 +67,14 @@ if __name__ == "__main__":
         config = tf.compat.v1.ConfigProto()
         # config.gpu_options.visible_device_list = '1'
         config.gpu_options.per_process_gpu_memory_fraction = 1.0
-    
+        # physical_devices = tf.config.list_physical_devices('GPU')
+        # try:
+        #     tf.config.experimental.set_memory_growth(physical_devices[0], True)
+        # except:
+        #     # Invalid device or cannot modify virtual devices once initialized.
+        #     print("Cannot access 'set_memory_growth' - skipping.")
+        #     pass 
+
         # disable arithmetic optimizer
         off = rewriter_config_pb2.RewriterConfig.OFF
         config.graph_options.rewrite_options.arithmetic_optimization = off
@@ -100,34 +107,36 @@ if __name__ == "__main__":
     # pow_diff = np.reshape(np.real(pow_diff), (pow_diff.shape[0]*pow_diff.shape[1], -1))
     # print(f"-> post reshape: pow_diff.shape: {pow_diff.shape}")
 
-    SHUFFLE_BUFFER_SIZE = batch_size*5
+    # SHUFFLE_BUFFER_SIZE = batch_size*5
 
     # loading directly from unnormalized data; normalize data
     aux_val, x_val = data_val
+    print('-> pre-renorm: x_val range is from {} to {}'.format(np.min(x_val),np.max(x_val)))
     x_val = renorm_H4(x_val,minmax_file)
+    data_val = aux_val, x_val 
     print(f"-> pre reshape: x_val.shape: {x_val.shape}")
     # x_val = np.reshape(x_val, (x_val.shape[0]*x_val.shape[1], x_val.shape[2], x_val.shape[3], x_val.shape[4]))
     # print(f"-> post reshape: x_val.shape: {x_val.shape}")
     # aux_val = np.tile(aux_val, (T,1))
     print(f"-> aux_val.shape: {aux_val.shape} - x_val.shape: {x_val.shape}")
     print('-> post-renorm: x_val range is from {} to {}'.format(np.min(x_val),np.max(x_val)))
-    val_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_val, "input_2": x_val}, x_val)).batch(batch_size).repeat()
+    # val_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_val, "input_2": x_val}, x_val)).batch(batch_size).repeat()
 
     if opt.train_argv:
         aux_train, x_train = data_train
         x_train = renorm_H4(x_train,minmax_file)
+        data_train = aux_train, x_train 
         # print(f"pre reshape: x_train.shape: {x_train.shape}")
         # x_train = np.reshape(x_train, (x_train.shape[0]*x_train.shape[1], x_train.shape[2], x_train.shape[3], x_train.shape[4]))
         # print(f"post reshape: x_train.shape: {x_train.shape}")
         # aux_train = np.tile(aux_train, (T,1))
         print(f"-> aux_train.shape: {aux_train.shape} - x_train.shape: {x_train.shape}")
         print('-> post-renorm: x_train range is from {} to {}'.format(np.min(x_train),np.max(x_train)))
-        train_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_train, "input_2": x_train}, x_train)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
+        # train_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_train, "input_2": x_train}, x_train)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
 
     # opt.rates = [512, 128, 64, 32]
     print('Build and train CsiNet for rate={}'.format(opt.rate))
     # reset_keras()
-    # learning_rate = CosineSchedule(max_lr=lr, min_lr=lr/10)
     optimizer = Adam(learning_rate=lr)
     if opt.aux_bool:
         aux = Input((opt.aux_size,))
@@ -170,63 +179,62 @@ if __name__ == "__main__":
     autoencoder.compile(optimizer=optimizer, loss='mse')
     print(autoencoder.summary())
 
-    class LossHistory(Callback):
-            def on_train_begin(self, logs={}):
-                    self.losses_train = []
-                    self.losses_val = []
-
-            def on_batch_end(self, batch, logs={}):
-                    self.losses_train.append(logs.get('loss'))
-                        
-            def on_epoch_end(self, epoch, logs={}):
-                    self.losses_val.append(logs.get('val_loss'))
-
-    history = LossHistory()
-
-    # early stopping callback
-    es = EarlyStopping(monitor='val_loss',mode='min',patience=20,verbose=1)
-
-    # path = f'{outfile_base}_tensorboard'
-
-    # save+serialize model to JSON
-    # model_json = autoencoder.to_json()
-    # outfile = "{}/model_{}.json".format(result_dir,file)
-    # with open(outfile, "w") as json_file:
-    #         json_file.write(model_json)
-    # serialize weights to HDF5
-    # outfile = "{}/model_{}.h5".format(result_dir,file)
-    # autoencoder.save_weights(outfile)
-
-    outfile = f"{outfile_base}.h5"
-
     if opt.train_argv:
+        class LossHistory(Callback):
+                def on_train_begin(self, logs={}):
+                        self.losses_train = []
+                        self.losses_val = []
 
+                def on_batch_end(self, batch, logs={}):
+                        self.losses_train.append(logs.get('loss'))
+                            
+                def on_epoch_end(self, epoch, logs={}):
+                        self.losses_val.append(logs.get('val_loss'))
+
+        history = LossHistory()
+
+        # early stopping callback
+        es = EarlyStopping(monitor='val_loss',mode='min',patience=20,verbose=1)
+
+        # path = f'{outfile_base}_tensorboard'
+
+        # save+serialize model to JSON
+        # model_json = autoencoder.to_json()
+        # outfile = "{}/model_{}.json".format(result_dir,file)
+        # with open(outfile, "w") as json_file:
+        #         json_file.write(model_json)
+        # serialize weights to HDF5
+        # outfile = "{}/model_{}.h5".format(result_dir,file)
+        # autoencoder.save_weights(outfile)
+
+        outfile = f"{outfile_base}.h5"
         checkpoint = ModelCheckpoint(outfile, monitor="val_loss",verbose=1,save_best_only=True,mode="min")
+
         steps_per_epoch = x_train.shape[0] // batch_size
         val_steps = x_val.shape[0] // batch_size
-        autoencoder.trainable = True
+
         autoencoder.fit(
-                        train_gen,
-                        # data_train,
-                        # x_train,
+                        # train_gen,
+                        data_train,
+                        x_train,
                         epochs=epochs,
-                        steps_per_epoch=steps_per_epoch,
-                        # batch_size=batch_size,
+                        # steps_per_epoch=steps_per_epoch,
+                        batch_size=batch_size,
                         shuffle=True,
-                        # validation_data=(data_val, x_val),
-                        validation_data=val_gen,
-                        validation_steps=val_steps,
+                        validation_data=(data_val, x_val),
+                        # validation_data=val_gen,
+                        # validation_steps=val_steps,
                         callbacks=[history, checkpoint]
                         )
                                 # TensorBoard(log_dir = path)])
 
-        # filename = f'{model_dir}/{opt.env}/{opt.dir}/{network_name}_trainloss.csv'
-        # loss_history = np.array(history.losses_train)
-        # np.savetxt(filename, loss_history, delimiter=",")
+    # filename = f'{model_dir}/{opt.env}/{opt.dir}/{network_name}_trainloss.csv'
+    # loss_history = np.array(history.losses_train)
+    # np.savetxt(filename, loss_history, delimiter=",")
             
-        # filename = f'{model_dir}/{opt.env}/{opt.dir}/{network_name}_valloss.csv'
-        # loss_history = np.array(history.losses_val)
-        # np.savetxt(filename, loss_history, delimiter=",")
+    # filename = f'{model_dir}/{opt.env}/{opt.dir}/{network_name}_valloss.csv'
+    # loss_history = np.array(history.losses_val)
+    # np.savetxt(filename, loss_history, delimiter=",")
 
     #Testing data
     weights_file = f"{outfile_base}.h5"
