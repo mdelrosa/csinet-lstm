@@ -116,7 +116,7 @@ if __name__ == "__main__":
     # aux_val = np.tile(aux_val, (T,1))
     print(f"-> aux_val.shape: {aux_val.shape} - x_val.shape: {x_val.shape}")
     print('-> post-renorm: x_val range is from {} to {}'.format(np.min(x_val),np.max(x_val)))
-    val_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_val, "input_2": x_val}, x_val)).batch(batch_size).repeat()
+    # val_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_val, "input_2": x_val}, x_val)).batch(batch_size).repeat()
     # val_gen = tf.data.Dataset.from_generator(data_generator, args=[x_val], output_types=(tf.float32, tf.float32), output_shapes=((None,)+x_val.shape[1:], (None,)+x_val.shape[1:])).batch(batch_size).repeat()
 
     if opt.train_argv:
@@ -129,7 +129,7 @@ if __name__ == "__main__":
         # aux_train = np.tile(aux_train, (T,1))
         print(f"-> aux_train.shape: {aux_train.shape} - x_train.shape: {x_train.shape}")
         print('-> post-renorm: x_train range is from {} to {}'.format(np.min(x_train),np.max(x_train)))
-        train_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_train, "input_2": x_train}, x_train)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
+        # train_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_train, "input_2": x_train}, x_train)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
         # train_gen = tf.data.Dataset.from_generator(data_generator, args=[x_train], output_types=(tf.float32, tf.float32), output_shapes=((None,)+x_train.shape[1:], (None,)+x_train.shape[1:])).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
 
     # train_gen = tf.data.Dataset.from_tensor_slices((data_train, x_train)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
