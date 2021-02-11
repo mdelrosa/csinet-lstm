@@ -37,7 +37,7 @@ if __name__ == "__main__":
         json_config = '../config/csinet_lstm_outdoor_cost2100.json' # 0 epochs 
     # quant_config = "../config/quant/10bits.json"
 
-    M_1, data_format, network_name, subnetwork_name, model_dir, norm_range, minmax_file, share_bool, T, dataset_spec, diff_spec, batch_num, lr, batch_size, subsample_prop = get_keys_from_json(json_config, keys=['M_1', 'df', 'network_name', 'subnetwork_name', 'model_dir', 'norm_range', 'minmax_file', 'share_bool', 'T', 'dataset_spec', 'diff_spec', 'batch_num', 'lr', 'batch_size', 'subsample_prop'])
+    M_1, data_format, network_name, subnetwork_name, model_dir, norm_range, minmax_file, share_bool, T, dataset_spec, diff_spec, batch_num, lr, batch_size, subsample_prop, thresh_idx_path = get_keys_from_json(json_config, keys=['M_1', 'df', 'network_name', 'subnetwork_name', 'model_dir', 'norm_range', 'minmax_file', 'share_bool', 'T', 'dataset_spec', 'diff_spec', 'batch_num', 'lr', 'batch_size', 'subsample_prop', 'thresh_idx_path'])
     aux_bool, quant_bool, LSTM_only_bool, pass_through_bool, t1_train, t2_train, lstm_latent_bool = get_keys_from_json(json_config, keys=['aux_bool', 'quant_bool', 'LSTM_only_bool', 'pass_through_bool', 't1_train', 't2_train', 'lstm_latent_bool'],is_bool=True) # import these as booleans rather than int, str
 
     import scipy.io as sio 
@@ -95,7 +95,7 @@ if __name__ == "__main__":
     epochs = 1 if opt.debug_flag else opt.epochs
 
     # data_train, data_val, data_test = dataset_pipeline(batch_num, opt.debug_flag, aux_bool, dataset_spec, M_1, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv, merge_val_test = True)
-    pow_diff, data_train, data_val = dataset_pipeline_col(opt.debug_flag, opt.aux_bool, dataset_spec, diff_spec, opt.aux_size, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv, subsample_prop=subsample_prop)
+    pow_diff, data_train, data_val = dataset_pipeline_col(opt.debug_flag, opt.aux_bool, dataset_spec, diff_spec, opt.aux_size, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv, subsample_prop=subsample_prop, thresh_idx_path=thresh_idx_path)
 
     # tf Dataset object
     # SHUFFLE_BUFFER_SIZE = batch_size*5
@@ -116,7 +116,7 @@ if __name__ == "__main__":
     # aux_val = np.tile(aux_val, (T,1))
     print(f"-> aux_val.shape: {aux_val.shape} - x_val.shape: {x_val.shape}")
     print('-> post-renorm: x_val range is from {} to {}'.format(np.min(x_val),np.max(x_val)))
-    # val_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_val, "input_2": x_val}, x_val)).batch(batch_size).repeat()
+    val_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_val, "input_2": x_val}, x_val)).batch(batch_size).repeat()
     # val_gen = tf.data.Dataset.from_generator(data_generator, args=[x_val], output_types=(tf.float32, tf.float32), output_shapes=((None,)+x_val.shape[1:], (None,)+x_val.shape[1:])).batch(batch_size).repeat()
 
     if opt.train_argv:
@@ -129,7 +129,7 @@ if __name__ == "__main__":
         # aux_train = np.tile(aux_train, (T,1))
         print(f"-> aux_train.shape: {aux_train.shape} - x_train.shape: {x_train.shape}")
         print('-> post-renorm: x_train range is from {} to {}'.format(np.min(x_train),np.max(x_train)))
-        # train_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_train, "input_2": x_train}, x_train)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
+        train_gen = tf.data.Dataset.from_tensor_slices(({"input_1": aux_train, "input_2": x_train}, x_train)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
         # train_gen = tf.data.Dataset.from_generator(data_generator, args=[x_train], output_types=(tf.float32, tf.float32), output_shapes=((None,)+x_train.shape[1:], (None,)+x_train.shape[1:])).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
 
     # train_gen = tf.data.Dataset.from_tensor_slices((data_train, x_train)).shuffle(SHUFFLE_BUFFER_SIZE).batch(batch_size).repeat()
