@@ -25,6 +25,7 @@ if __name__ == "__main__":
     parser.add_argument("-lo", "--load_bool", type=str2bool, default=False, help="bool for loading weights into CsiNet-LSTM network")
     parser.add_argument("-a", "--aux_bool", type=str2bool, default=True, help="bool for building CsiNet with auxiliary input")
     parser.add_argument("-m", "--aux_size", type=int, default=512, help="integer for auxiliary input's latent rate")
+    parser.add_argument("-sr", "--stride", type=int, default=1, help="space between timeslots for each step (default 1); controls feedback interval")
     opt = parser.parse_args()
 
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID";  # The GPU id to use, usually either "0" or "1";
@@ -95,7 +96,7 @@ if __name__ == "__main__":
     epochs = 1 if opt.debug_flag else opt.epochs
 
     # data_train, data_val, data_test = dataset_pipeline(batch_num, opt.debug_flag, aux_bool, dataset_spec, M_1, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv, merge_val_test = True)
-    pow_diff, data_train, data_val = dataset_pipeline_col(opt.debug_flag, opt.aux_bool, dataset_spec, diff_spec, opt.aux_size, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv, subsample_prop=subsample_prop, thresh_idx_path=thresh_idx_path)
+    pow_diff, data_train, data_val = dataset_pipeline_col(opt.debug_flag, opt.aux_bool, dataset_spec, diff_spec, opt.aux_size, T = T, img_channels = img_channels, img_height = img_height, img_width = img_width, data_format = data_format, train_argv = opt.train_argv, subsample_prop=subsample_prop, thresh_idx_path=thresh_idx_path, stride=opt.stride)
 
     # tf Dataset object
     # SHUFFLE_BUFFER_SIZE = batch_size*5
