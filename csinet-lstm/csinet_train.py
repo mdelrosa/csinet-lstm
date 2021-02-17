@@ -6,7 +6,7 @@ if __name__ == "__main__":
     import copy
     import sys
     sys.path.append("/home/mdelrosa/git/brat")
-    from utils.NMSE_performance import calc_NMSE, get_NMSE, denorm_H3, renorm_H4, denorm_H4, denorm_sphH4
+    from utils.NMSE_performance import calc_NMSE, get_NMSE, denorm_H3, renorm_H4, denorm_H4, renorm_tanh, denorm_tanh
     from utils.data_tools import dataset_pipeline_col, dataset_pipeline_complex, subsample_batches, load_pow_diff
     from utils.parsing import str2bool
     from utils.timing import Timer
@@ -28,7 +28,8 @@ if __name__ == "__main__":
         json_config = '../config/csinet_outdoor_cost2100_pow.json'
         # json_config = '../config/csinet_outdoor_cost2100_pow_subsample.json' 
     elif opt.env == "indoor":
-        json_config = '../config/csinet_indoor_cost2100_pow.json' 
+        # json_config = '../config/csinet_indoor_cost2100_pow.json' 
+        json_config = '../config/csinet_indoor_cost2100_tanh.json' 
         # json_config = '../config/csinet_indoor_cost2100_pow_subsample.json' 
         # json_config = '../config/csinet_indoor_cost2100_old.json' # requires dataset_pipeline_complex
 
@@ -112,7 +113,10 @@ if __name__ == "__main__":
     # loading directly from unnormalized data; normalize data
     aux_val, x_val = data_val
     print('-> pre-renorm: x_val range is from {} to {}'.format(np.min(x_val),np.max(x_val)))
-    x_val = renorm_H4(x_val,minmax_file)
+    if norm_range == "norm_H4":
+        x_val = renorm_H4(x_val,minmax_file)
+    elif norm_range == "tanh":
+        x_val = renorm_tanh(x_val,minmax_file)
     data_val = aux_val, x_val 
     print(f"-> pre reshape: x_val.shape: {x_val.shape}")
     # x_val = np.reshape(x_val, (x_val.shape[0]*x_val.shape[1], x_val.shape[2], x_val.shape[3], x_val.shape[4]))
@@ -167,6 +171,9 @@ if __name__ == "__main__":
         if norm_range == "norm_H4":
             x_hat_denorm = denorm_H4(x_hat,minmax_file)
             x_val_denorm = denorm_H4(x_val,minmax_file)
+        elif norm_range == "tanh":
+            x_hat_denorm = denorm_tanh(x_hat,minmax_file)
+            x_val_denorm = denorm_tanh(x_val,minmax_file)
         print('-> x_hat range is from {} to {}'.format(np.min(x_hat_denorm),np.max(x_hat_denorm)))
         print('-> x_val range is from {} to {} '.format(np.min(x_val_denorm),np.max(x_val_denorm)))
         calc_NMSE(x_hat_denorm,x_val_denorm,T=T)
