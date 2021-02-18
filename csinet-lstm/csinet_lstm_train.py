@@ -5,6 +5,7 @@ if __name__ == "__main__":
     import os
     import copy
     import sys
+    import pickle
     sys.path.append("/home/mdelrosa/git/brat")
     from utils.NMSE_performance import calc_NMSE, get_NMSE, denorm_H3, renorm_H4, denorm_H4, denorm_sphH4
     from utils.data_tools import dataset_pipeline_col, subsample_batches
@@ -26,6 +27,7 @@ if __name__ == "__main__":
     parser.add_argument("-a", "--aux_bool", type=str2bool, default=True, help="bool for building CsiNet with auxiliary input")
     parser.add_argument("-m", "--aux_size", type=int, default=512, help="integer for auxiliary input's latent rate")
     parser.add_argument("-sr", "--stride", type=int, default=1, help="space between timeslots for each step (default 1); controls feedback interval")
+    parser.add_argument("-v", "--viz_batch", type=int, default=-1, help="index of element to save for visualization")
     opt = parser.parse_args()
 
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID";  # The GPU id to use, usually either "0" or "1";
@@ -181,34 +183,28 @@ if __name__ == "__main__":
         outpath_base += "/" + opt.dir 
     outfile_base = f"{outpath_base}/cr{opt.rate}/{network_name}"
     subnetwork_spec = [outpath_base, subnetwork_name]
-    if opt.load_bool:
-        # if (LSTM_only_bool):
-        #     file = f"{file_base}_{opt.env}_D{opt.depth}"
-        # elif (network_name != 'model_weights_test'):
-        #     file = file_base+(opt.env)+'_dim'+str(M_2)+"_{}".format(date)
-        # else:
-        #     file = "weights_test" 
-        CsiNet_LSTM_model = CsiNet_LSTM(img_channels, img_height, img_width, T, M_1, M_2, envir=opt.env, LSTM_depth=opt.depth, data_format=data_format, t1_trainable=t1_train, t2_trainable=t2_train, share_bool=share_bool, pass_through_bool=pass_through_bool, LSTM_only_bool=LSTM_only_bool, subnetwork_spec=subnetwork_spec, pretrained_bool=opt.pretrained_bool)
-        # outfile = "{}/model_{}.h5".format(model_dir,file)
-        CsiNet_LSTM_model.load_weights(f"{outfile_base}.h5")
-        # CsiNet_LSTM_model = tf.keras.models.load_model(outfile)
-        print ("--- Pre-loaded network performance is... ---")
-        x_hat = CsiNet_LSTM_model.predict(data_val)
+    # if opt.load_bool:
+    #     CsiNet_LSTM_model = CsiNet_LSTM(img_channels, img_height, img_width, T, M_1, M_2, envir=opt.env, LSTM_depth=opt.depth, data_format=data_format, t1_trainable=t1_train, t2_trainable=t2_train, share_bool=share_bool, pass_through_bool=pass_through_bool, LSTM_only_bool=LSTM_only_bool, subnetwork_spec=subnetwork_spec, pretrained_bool=opt.pretrained_bool)
+    #     CsiNet_LSTM_model.load_weights(f"{outfile_base}.h5")
+    #     print ("--- Pre-loaded network performance is... ---")
+    #     x_hat = CsiNet_LSTM_model.predict(data_val)
 
-        print("For Adam with lr={:1.1e} // batch_size={} // norm_range={}".format(lr,batch_size,norm_range))
-        print("x_hat.dtype: {}".format(x_hat.dtype)) # sanity check on output datatype
-        if norm_range == "norm_H3":
-            x_hat_denorm = denorm_H3(x_hat,minmax_file)
-            x_val_denorm = denorm_H3(x_val,minmax_file)
-        if norm_range == "norm_H4":
-            x_hat_denorm = denorm_H4(x_hat,minmax_file)
-            x_val_denorm = denorm_H4(x_val,minmax_file)
-        print('-> x_hat range is from {} to {}'.format(np.min(x_hat_denorm),np.max(x_hat_denorm)))
-        print('-> x_val range is from {} to {} '.format(np.min(x_val_denorm),np.max(x_val_denorm)))
-        calc_NMSE(x_hat_denorm,x_val_denorm,T=T)
-    else:
-        CsiNet_LSTM_model = CsiNet_LSTM(img_channels, img_height, img_width, T, M_1, M_2, LSTM_depth=opt.depth, data_format=data_format, t1_trainable=t1_train, t2_trainable=t2_train, share_bool=share_bool, pass_through_bool=pass_through_bool, LSTM_only_bool=LSTM_only_bool, subnetwork_spec=subnetwork_spec, pretrained_bool=opt.pretrained_bool)
-        CsiNet_LSTM_model.compile(optimizer=optimizer, loss='mse')
+    #     print("For Adam with lr={:1.1e} // batch_size={} // norm_range={}".format(lr,batch_size,norm_range))
+    #     print("x_hat.dtype: {}".format(x_hat.dtype)) # sanity check on output datatype
+    #     if norm_range == "norm_H3":
+    #         x_hat_denorm = denorm_H3(x_hat,minmax_file)
+    #         x_val_denorm = denorm_H3(x_val,minmax_file)
+    #     if norm_range == "norm_H4":
+    #         x_hat_denorm = denorm_H4(x_hat,minmax_file)
+    #         x_val_denorm = denorm_H4(x_val,minmax_file)
+    #     print('-> x_hat range is from {} to {}'.format(np.min(x_hat_denorm),np.max(x_hat_denorm)))
+    #     print('-> x_val range is from {} to {} '.format(np.min(x_val_denorm),np.max(x_val_denorm)))
+    #     calc_NMSE(x_hat_denorm,x_val_denorm,T=T)
+    # else:
+    CsiNet_LSTM_model = CsiNet_LSTM(img_channels, img_height, img_width, T, M_1, M_2, LSTM_depth=opt.depth, data_format=data_format, t1_trainable=t1_train, t2_trainable=t2_train, share_bool=share_bool, pass_through_bool=pass_through_bool, LSTM_only_bool=LSTM_only_bool, subnetwork_spec=subnetwork_spec, pretrained_bool=opt.pretrained_bool)
+    if opt.load_bool:
+        CsiNet_LSTM_model.load_weights(f"{outfile_base}.h5")
+    CsiNet_LSTM_model.compile(optimizer=optimizer, loss='mse')
 
     if (opt.train_argv):
         # save+serialize model to JSON
@@ -233,11 +229,11 @@ if __name__ == "__main__":
                                     history])
                                     # TensorBoard(log_dir = path),
             
-        filename = f'{outpath_base}_trainloss.csv'
+        filename = f'{outfile_base}_trainloss.csv'
         loss_history = np.array(history.losses_train)
         np.savetxt(filename, loss_history, delimiter=",")
             
-        filename = f'{outpath_base}_valloss.csv'
+        filename = f'{outfile_base}_valloss.csv'
         loss_history = np.array(history.losses_val)
         np.savetxt(filename, loss_history, delimiter=",")
             
@@ -258,3 +254,15 @@ if __name__ == "__main__":
     print('-> x_val range is from {} to {} '.format(np.min(x_val_denorm),np.max(x_val_denorm)))
 
     calc_NMSE(x_hat_denorm,x_val_denorm,T=T,pow_diff=pow_diff)
+    
+    if opt.viz_batch > -1 and not opt.train_argv:
+        print(f"=== Saving input/output batch {opt.viz_batch} from validation set ===")
+        # save input/output of validation batch for visualization
+        viz_dict = {
+                    "input": x_val_denorm[opt.viz_batch, :, :, :, :],
+                    "output": x_hat_denorm[opt.viz_batch, :, :, :, :]
+                }
+
+        with open(f"{outfile_base}_batch{opt.viz_batch}.pkl", "wb") as f:
+            pickle.dump(viz_dict, f)
+            f.close()
