@@ -5,7 +5,7 @@ if __name__ == "__main__":
     import os
     import copy
     import sys
-    sys.path.append("/home/mdelrosa/git/brat")
+    sys.path.append("/jet/home/mdelrosa/git/brat")
     from utils.NMSE_performance import calc_NMSE, get_NMSE, denorm_H3, renorm_H4, denorm_H4, renorm_tanh, denorm_tanh
     from utils.data_tools import dataset_pipeline_col, dataset_pipeline_complex, subsample_batches, load_pow_diff
     from utils.parsing import str2bool
@@ -25,11 +25,12 @@ if __name__ == "__main__":
     opt = parser.parse_args()
 
     if opt.env == "outdoor":
-        json_config = '../config/csinet_outdoor_cost2100_pow.json'
+        # json_config = '../config/csinet_outdoor_cost2100_pow.json'
+        json_config = '../config/csinet_outdoor_cost2100_tanh.json' 
         # json_config = '../config/csinet_outdoor_cost2100_pow_subsample.json' 
     elif opt.env == "indoor":
-        # json_config = '../config/csinet_indoor_cost2100_pow.json' 
-        json_config = '../config/csinet_indoor_cost2100_tanh.json' 
+        json_config = '../config/csinet_indoor_cost2100_pow.json' 
+        # json_config = '../config/csinet_indoor_cost2100_tanh.json' 
         # json_config = '../config/csinet_indoor_cost2100_pow_subsample.json' 
         # json_config = '../config/csinet_indoor_cost2100_old.json' # requires dataset_pipeline_complex
 
@@ -128,7 +129,11 @@ if __name__ == "__main__":
 
     if opt.train_argv:
         aux_train, x_train = data_train
-        x_train = renorm_H4(x_train,minmax_file)
+        if norm_range == "norm_H4":
+            x_train = renorm_H4(x_train,minmax_file)
+        elif norm_range == "tanh":
+            x_train = renorm_tanh(x_train,minmax_file)
+
         data_train = aux_train, x_train 
         # print(f"pre reshape: x_train.shape: {x_train.shape}")
         # x_train = np.reshape(x_train, (x_train.shape[0]*x_train.shape[1], x_train.shape[2], x_train.shape[3], x_train.shape[4]))
@@ -168,7 +173,7 @@ if __name__ == "__main__":
         if norm_range == "norm_H3":
             x_hat_denorm = denorm_H3(x_hat,minmax_file)
             x_val_denorm = denorm_H3(x_val,minmax_file)
-        if norm_range == "norm_H4":
+        elif norm_range == "norm_H4":
             x_hat_denorm = denorm_H4(x_hat,minmax_file)
             x_val_denorm = denorm_H4(x_val,minmax_file)
         elif norm_range == "tanh":
@@ -262,9 +267,12 @@ if __name__ == "__main__":
     if norm_range == "norm_H3":
         x_hat_denorm = denorm_H3(x_hat,minmax_file)
         x_val_denorm = denorm_H3(x_val,minmax_file)
-    if norm_range == "norm_H4":
+    elif norm_range == "norm_H4":
         x_hat_denorm = denorm_H4(x_hat,minmax_file)
         x_val_denorm = denorm_H4(x_val,minmax_file)
+    elif norm_range == "tanh":
+        x_hat_denorm = denorm_tanh(x_hat,minmax_file)
+        x_val_denorm = denorm_tanh(x_val,minmax_file)
     print('-> post-denorm: x_hat range is from {} to {}'.format(np.min(x_hat_denorm),np.max(x_hat_denorm)))
     print('-> post-denorm: x_val range is from {} to {} '.format(np.min(x_val_denorm),np.max(x_val_denorm)))
 
