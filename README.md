@@ -2,8 +2,8 @@
 
 Repository for reproduction of CsiNet-LSTM used in MarkovNet paper (currently preprint).
 
-[1] Liu, Z., del Rosario, M., & Ding, Z. (2020). A Markovian Model-Driven Deep Learning Framework for Massive MIMO CSI Feedback. arXiv preprint arXiv:2009.09468.
-[2] T. Wang, C. Wen, S. Jin, and G. Y. Li, “Deep learning-based csi feedback approach for time-varying massive mimo channels,” IEEE Wireless Communications Letters, vol. 8, no. 2, pp. 416–419, April 2019.
+- [1] Liu, Z., del Rosario, M., & Ding, Z. (2020). A Markovian Model-Driven Deep Learning Framework for Massive MIMO CSI Feedback. arXiv preprint arXiv:2009.09468.
+- [2] T. Wang, C. Wen, S. Jin, and G. Y. Li, “Deep learning-based csi feedback approach for time-varying massive mimo channels,” IEEE Wireless Communications Letters, vol. 8, no. 2, pp. 416–419, April 2019.
 
 ## Data
 
